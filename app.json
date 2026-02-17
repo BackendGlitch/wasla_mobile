@@ -2,7 +2,9 @@
   "expo": {
     "name": "wasla_mobile",
     "slug": "wasla_mobile",
+    "owner": "BackendGlitch",
     "version": "1.0.0",
+    "description": "Wasla mobile app managed by BackendGlitch.",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -25,6 +27,14 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "author": "BackendGlitch",
+      "contactEmail": "contact@backendglitch.com"
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-web-browser"
+    ]
   }
 }
