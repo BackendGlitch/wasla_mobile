@@ -1,0 +1,1 @@
+export { waslaColors } from './colors';

@@ -10,6 +10,7 @@
     "web": "expo start --web"
   },
   "dependencies": {
+    "@expo/vector-icons": "^15.1.1",
     "@gorhom/bottom-sheet": "^5.2.8",
     "@hookform/resolvers": "^5.2.2",
     "@react-native-menu/menu": "^1.2.2",
@@ -20,8 +21,13 @@
     "dayjs": "^1.11.19",
     "expo": "~54.0.33",
     "expo-camera": "~17.0.10",
+    "expo-constants": "^55.0.7",
+    "expo-font": "^55.0.4",
+    "expo-linking": "^55.0.7",
     "expo-notifications": "~0.32.16",
+    "expo-router": "^55.0.3",
     "expo-secure-store": "~15.0.8",
+    "expo-splash-screen": "^55.0.10",
     "expo-status-bar": "~3.0.9",
     "expo-web-browser": "~15.0.10",
     "moti": "^0.30.0",
