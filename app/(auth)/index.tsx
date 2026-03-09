@@ -1,113 +1,64 @@
-import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, TextInput as RNTextInput } from 'react-native';
-import { YStack, XStack, Text, Button, Spinner, Input } from 'tamagui';
+import { YStack, Text, Button } from 'tamagui';
 import { useRouter } from 'expo-router';
 import { waslaColors } from '../../src/theme/colors';
-import { mockApi } from '../../src/lib/api';
 
-export default function PhoneInputScreen() {
+export default function AuthChoiceScreen() {
   const router = useRouter();
-  const [phone, setPhone] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  const handleSendOtp = async () => {
-    if (phone.length < 6) {
-      setError('Please enter a valid phone number');
-      return;
-    }
-
-    setError('');
-    setLoading(true);
-    try {
-      await mockApi.sendOtp(phone);
-      router.push({ pathname: '/(auth)/otp', params: { phone } });
-    } catch (e: any) {
-      setError(e.message || 'Something went wrong');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: waslaColors.background }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <YStack flex={1} justify="center" p="$6">
-        {/* Header */}
-        <YStack gap="$3" mb="$8">
-          <Text fontSize="$9" fontWeight="800" color={waslaColors.textPrimary}>
-            Sign in to Wasla
-          </Text>
-          <Text fontSize="$4" color={waslaColors.textSecondary} lineHeight={22}>
-            Enter your phone number and we'll send you a verification code.
-          </Text>
-        </YStack>
-
-        {/* Phone Input */}
-        <YStack gap="$4">
-          <YStack gap="$2">
-            <Text fontSize="$3" fontWeight="600" color={waslaColors.textSecondary}>
-              Phone Number
-            </Text>
-            <XStack
-              borderWidth={1.5}
-              borderColor={error ? waslaColors.error : waslaColors.border}
-              rounded="$4"
-              p="$1"
-              items="center"
-              bg={waslaColors.surface}
-            >
-              <Text pl="$3" fontSize="$5" color={waslaColors.textMuted}>
-                +216
-              </Text>
-              <Input
-                flex={1}
-                size="$5"
-                placeholder="XX XXX XXX"
-                keyboardType="phone-pad"
-                value={phone}
-                onChangeText={setPhone}
-                borderWidth={0}
-                bg="transparent"
-                fontSize="$5"
-              />
-            </XStack>
-            {error ? (
-              <Text fontSize="$2" color={waslaColors.error}>
-                {error}
-              </Text>
-            ) : null}
-          </YStack>
-
-          <Button
-            size="$5"
-            bg={waslaColors.primary500}
-            rounded="$4"
-            mt="$4"
-            pressStyle={{ bg: waslaColors.primary700 }}
-            onPress={handleSendOtp}
-            disabled={loading}
-            opacity={loading ? 0.7 : 1}
-          >
-            {loading ? (
-              <Spinner color="white" />
-            ) : (
-              <Text color="white" fontWeight="700" fontSize="$5">
-                Send Verification Code
-              </Text>
-            )}
-          </Button>
-        </YStack>
-
-        {/* Footer hint */}
-        <YStack mt="$6" items="center">
-          <Text fontSize="$2" color={waslaColors.textMuted} text="center">
-            Mock mode — any phone number works. OTP: 123456
-          </Text>
-        </YStack>
+    <YStack flex={1} bg={waslaColors.background} items="center" justify="center" p="$6" gap="$6">
+      {/* Header */}
+      <YStack items="center" gap="$3">
+        <Text fontSize={60}>🚌</Text>
+        <Text fontSize="$9" fontWeight="800" color={waslaColors.textPrimary} text="center">
+          Welcome to Wasla
+        </Text>
+        <Text fontSize="$4" color={waslaColors.textSecondary} text="center" lineHeight={22}>
+          Choose how you want to sign in or create an account.
+        </Text>
       </YStack>
-    </KeyboardAvoidingView>
+
+      {/* Buttons */}
+      <YStack gap="$3" width="100%" mt="$4">
+        {/* Email Login */}
+        <Button
+          size="$5"
+          bg={waslaColors.primary500}
+          rounded="$4"
+          pressStyle={{ bg: waslaColors.primary700 }}
+          onPress={() => router.push('/login')}
+        >
+          <Text color="white" fontWeight="700" fontSize="$5">
+            Sign in with Email
+          </Text>
+        </Button>
+
+        {/* Email Register */}
+        <Button
+          size="$5"
+          bg={waslaColors.secondary500}
+          rounded="$4"
+          pressStyle={{ bg: waslaColors.secondary700 }}
+          onPress={() => router.push('/register')}
+        >
+          <Text color="white" fontWeight="700" fontSize="$5">
+            Create Account
+          </Text>
+        </Button>
+
+        {/* Phone Login */}
+        <Button
+          size="$5"
+          bg={waslaColors.accent500}
+          rounded="$4"
+          pressStyle={{ bg: waslaColors.accent700 }}
+          onPress={() => router.push('/phone')}
+        >
+          <Text color={waslaColors.textPrimary} fontWeight="700" fontSize="$5">
+            Sign in with Phone
+          </Text>
+        </Button>
+      </YStack>
+    </YStack>
   );
 }
