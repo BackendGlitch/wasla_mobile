@@ -1,9 +1,49 @@
 import { defaultConfig } from '@tamagui/config/v5';
-import { createTamagui } from 'tamagui';
+import { createFont, createTamagui } from 'tamagui';
 import { waslaColors } from './src/theme/colors';
+
+const soraFace = {
+  400: { normal: 'Sora_400Regular' },
+  500: { normal: 'Sora_500Medium' },
+  600: { normal: 'Sora_600SemiBold' },
+  700: { normal: 'Sora_700Bold' },
+};
+
+const soraBody = createFont({
+  family: 'Sora_400Regular',
+  size: defaultConfig.fonts.body.size,
+  lineHeight: defaultConfig.fonts.body.lineHeight,
+  letterSpacing: defaultConfig.fonts.body.letterSpacing,
+  weight: {
+    1: '400',
+    4: '500',
+    6: '600',
+    7: '700',
+  },
+  face: soraFace,
+});
+
+const soraHeading = createFont({
+  family: 'Sora_400Regular',
+  size: defaultConfig.fonts.heading.size,
+  lineHeight: defaultConfig.fonts.heading.lineHeight,
+  letterSpacing: defaultConfig.fonts.heading.letterSpacing,
+  weight: {
+    6: '600',
+    7: '700',
+    8: '700',
+    9: '700',
+  },
+  face: soraFace,
+});
 
 export const tamaguiConfig = createTamagui({
   ...defaultConfig,
+  fonts: {
+    ...defaultConfig.fonts,
+    body: soraBody,
+    heading: soraHeading,
+  },
   tokens: {
     ...defaultConfig.tokens,
     color: {
