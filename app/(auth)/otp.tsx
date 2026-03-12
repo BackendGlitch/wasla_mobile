@@ -1,8 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
 import { TextInput, KeyboardAvoidingView, Platform } from 'react-native';
-import { YStack, XStack, Text, Button, Spinner } from 'tamagui';
+import { YStack, XStack, Text, Button, Spinner, Circle } from 'tamagui';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { waslaColors } from '../../src/theme/colors';
+import { StatusBar } from 'expo-status-bar';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import AuthBackdrop from '../../src/components/auth/AuthBackdrop';
+import { authColors } from '../../src/theme/authTheme';
 import { mockApi } from '../../src/lib/api';
 import { useAuthStore } from '../../src/store';
 
@@ -19,7 +22,6 @@ export default function OtpScreen() {
 
   const handleChange = (text: string, index: number) => {
     if (text.length > 1) {
-      // Handle paste
       const chars = text.split('').slice(0, OTP_LENGTH);
       const newOtp = [...otp];
       chars.forEach((c, i) => {
@@ -52,7 +54,7 @@ export default function OtpScreen() {
   const handleVerify = async () => {
     const code = otp.join('');
     if (code.length !== OTP_LENGTH) {
-      setError('Please enter the full 6-digit code');
+      setError('Enter the full 6-digit code');
       return;
     }
 
@@ -77,7 +79,6 @@ export default function OtpScreen() {
     inputs.current[0]?.focus();
   };
 
-  // Auto-verify when all digits entered
   useEffect(() => {
     if (otp.join('').length === OTP_LENGTH) {
       handleVerify();
@@ -85,119 +86,127 @@ export default function OtpScreen() {
   }, [otp]);
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: waslaColors.background }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <YStack flex={1} justify="center" p="$6">
-        {/* Header */}
-        <YStack gap="$3" mb="$8">
-          <Text fontSize={40} lineHeight={48}>
-            🔐
-          </Text>
-          <Text fontSize="$8" fontWeight="800" color={waslaColors.textPrimary}>
-            Verify Your Number
-          </Text>
-          <Text fontSize="$4" color={waslaColors.textSecondary} lineHeight={22}>
-            Enter the 6-digit code sent to{' '}
-            <Text fontWeight="600" color={waslaColors.textPrimary}>
-              +216 {phone}
+    <AuthBackdrop variant="violet">
+      <StatusBar style="light" />
+
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <YStack flex={1} px="$5" pt="$8" pb="$6" justify="space-between">
+          <YStack gap="$3">
+            <XStack items="center" gap="$3">
+              <Circle size={42} bg={authColors.accentSoft} borderWidth={1} borderColor={authColors.borderStrong}>
+                <MaterialCommunityIcons name="shield-key" size={20} color={authColors.accentViolet} />
+              </Circle>
+              <Text fontSize="$7" fontWeight="800" color={authColors.textPrimary}>
+                Verify your number
+              </Text>
+            </XStack>
+            <Text fontSize="$4" color={authColors.textSecondary} lineHeight={22}>
+              Enter the 6-digit code sent to{' '}
+              <Text fontWeight="700" color={authColors.textPrimary}>
+                +216 {phone}
+              </Text>
             </Text>
-          </Text>
-        </YStack>
+          </YStack>
 
-        {/* OTP Boxes */}
-        <XStack gap="$2" justify="center" mb="$4">
-          {otp.map((digit, i) => (
-            <YStack
-              key={i}
-              width={48}
-              height={56}
-              borderWidth={2}
-              borderColor={
-                digit
-                  ? waslaColors.primary500
-                  : error
-                    ? waslaColors.error
-                    : waslaColors.border
-              }
-              rounded="$3"
-              items="center"
-              justify="center"
-              bg={waslaColors.surface}
-            >
-              <TextInput
-                ref={(ref) => {
-                  inputs.current[i] = ref;
-                }}
-                value={digit}
-                onChangeText={(t) => handleChange(t, i)}
-                onKeyPress={(e) => handleKeyPress(e, i)}
-                keyboardType="number-pad"
-                maxLength={1}
-                style={{
-                  fontSize: 22,
-                  fontWeight: '700',
-                  textAlign: 'center',
-                  width: '100%',
-                  height: '100%',
-                  color: waslaColors.textPrimary,
-                }}
-                selectTextOnFocus
-              />
-            </YStack>
-          ))}
-        </XStack>
-
-        {error ? (
-          <Text fontSize="$3" color={waslaColors.error} text="center" mb="$4">
-            {error}
-          </Text>
-        ) : null}
-
-        {/* Verify */}
-        <Button
-          size="$5"
-          bg={waslaColors.primary500}
-          rounded="$4"
-          mt="$2"
-          pressStyle={{ bg: waslaColors.primary700 }}
-          onPress={handleVerify}
-          disabled={loading}
-          opacity={loading ? 0.7 : 1}
-        >
-          {loading ? (
-            <Spinner color="white" />
-          ) : (
-            <Text color="white" fontWeight="700" fontSize="$5">
-              Verify
-            </Text>
-          )}
-        </Button>
-
-        {/* Resend */}
-        <XStack justify="center" mt="$5" gap="$2">
-          <Text fontSize="$3" color={waslaColors.textMuted}>
-            Didn't receive the code?
-          </Text>
-          <Text
-            fontSize="$3"
-            fontWeight="600"
-            color={waslaColors.primary500}
-            pressStyle={{ opacity: 0.7 }}
-            onPress={handleResend}
+          <YStack
+            bg={authColors.card}
+            borderWidth={1}
+            borderColor={authColors.border}
+            rounded="$7"
+            p="$5"
+            gap="$4"
           >
-            Resend
-          </Text>
-        </XStack>
+            <XStack gap="$2" justify="center">
+              {otp.map((digit, i) => (
+                <YStack
+                  key={i}
+                  width={48}
+                  height={56}
+                  borderWidth={1}
+                  borderColor={
+                    digit
+                      ? authColors.accentViolet
+                      : error
+                        ? authColors.error
+                        : authColors.borderStrong
+                  }
+                  rounded="$4"
+                  items="center"
+                  justify="center"
+                  bg={authColors.cardStrong}
+                >
+                  <TextInput
+                    ref={(ref) => {
+                      inputs.current[i] = ref;
+                    }}
+                    value={digit}
+                    onChangeText={(t) => handleChange(t, i)}
+                    onKeyPress={(e) => handleKeyPress(e, i)}
+                    keyboardType="number-pad"
+                    maxLength={1}
+                    style={{
+                      fontSize: 20,
+                      fontWeight: '700',
+                      textAlign: 'center',
+                      width: '100%',
+                      height: '100%',
+                      color: authColors.textPrimary,
+                    }}
+                    selectTextOnFocus
+                  />
+                </YStack>
+              ))}
+            </XStack>
 
-        {/* Dev hint */}
-        <YStack mt="$6" items="center">
-          <Text fontSize="$2" color={waslaColors.textMuted} text="center">
+            {error ? (
+              <Text fontSize="$3" color={authColors.error} text="center">
+                {error}
+              </Text>
+            ) : null}
+
+            <Button
+              size="$5"
+              bg={authColors.accentViolet}
+              borderWidth={1}
+              borderColor="rgba(139, 109, 255, 0.5)"
+              rounded="$6"
+              pressStyle={{ bg: '#7357E8' }}
+              onPress={handleVerify}
+              disabled={loading}
+              opacity={loading ? 0.7 : 1}
+            >
+              {loading ? (
+                <Spinner color={authColors.bg} />
+              ) : (
+                <Text color={authColors.bg} fontWeight="800" fontSize="$5" letterSpacing={0.6}>
+                  Verify
+                </Text>
+              )}
+            </Button>
+
+            <XStack justify="center" gap="$2">
+              <Text fontSize="$3" color={authColors.textMuted}>
+                Didn&apos;t receive the code?
+              </Text>
+              <Text
+                fontSize="$3"
+                fontWeight="700"
+                color={authColors.accent}
+                onPress={handleResend}
+              >
+                Resend
+              </Text>
+            </XStack>
+          </YStack>
+
+          <Text fontSize="$2" color={authColors.textMuted} text="center">
             Mock mode — use OTP: 123456
           </Text>
         </YStack>
-      </YStack>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </AuthBackdrop>
   );
 }

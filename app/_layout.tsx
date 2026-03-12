@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Slot, useRouter, useSegments } from 'expo-router';
 import { TamaguiProvider } from 'tamagui';
 import { StatusBar } from 'expo-status-bar';
+import { useFonts, Sora_400Regular, Sora_500Medium, Sora_600SemiBold, Sora_700Bold } from '@expo-google-fonts/sora';
 import * as SplashScreen from 'expo-splash-screen';
 import * as SecureStore from 'expo-secure-store';
 import tamaguiConfig from '../tamagui.config';
@@ -16,6 +17,12 @@ export default function RootLayout() {
   const { token, hasOnboarded, isLoading, setToken, setHasOnboarded, setLoading, setUser } =
     useAuthStore();
   const [appReady, setAppReady] = useState(false);
+  const [fontsLoaded] = useFonts({
+    Sora_400Regular,
+    Sora_500Medium,
+    Sora_600SemiBold,
+    Sora_700Bold,
+  });
 
   // ── Bootstrap: check stored token + onboarding flag ──
   useEffect(() => {
@@ -41,14 +48,19 @@ export default function RootLayout() {
       } finally {
         setLoading(false);
         setAppReady(true);
-        await SplashScreen.hideAsync();
       }
     })();
   }, []);
 
+  useEffect(() => {
+    if (appReady && fontsLoaded) {
+      SplashScreen.hideAsync();
+    }
+  }, [appReady, fontsLoaded]);
+
   // ── Route guard: redirect based on auth state ──
   useEffect(() => {
-    if (isLoading || !appReady) return;
+    if (isLoading || !appReady || !fontsLoaded) return;
 
     const inAuthGroup = segments[0] === '(auth)';
     const inAppGroup = segments[0] === '(app)';
@@ -72,11 +84,11 @@ export default function RootLayout() {
     }
   }, [token, hasOnboarded, isLoading, appReady, segments]);
 
-  if (!appReady) return null;
+  if (!appReady || !fontsLoaded) return null;
 
   return (
-    <TamaguiProvider config={tamaguiConfig} defaultTheme="light">
-      <StatusBar style="dark" />
+    <TamaguiProvider config={tamaguiConfig} defaultTheme="dark">
+      <StatusBar style="light" />
       <Slot />
     </TamaguiProvider>
   );
