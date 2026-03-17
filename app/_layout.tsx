@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useFonts, Sora_400Regular, Sora_500Medium, Sora_600SemiBold, Sora_700Bold } from '@expo-google-fonts/sora';
 import * as SplashScreen from 'expo-splash-screen';
 import * as SecureStore from 'expo-secure-store';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import tamaguiConfig from '../tamagui.config';
 import { useAuthStore } from '../src/store';
 
@@ -87,9 +88,11 @@ export default function RootLayout() {
   if (!appReady || !fontsLoaded) return null;
 
   return (
-    <TamaguiProvider config={tamaguiConfig} defaultTheme="dark">
-      <StatusBar style="light" />
-      <Slot />
-    </TamaguiProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <TamaguiProvider config={tamaguiConfig} defaultTheme="dark">
+        <StatusBar style="light" />
+        <Slot />
+      </TamaguiProvider>
+    </GestureHandlerRootView>
   );
 }
