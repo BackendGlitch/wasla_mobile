@@ -98,6 +98,9 @@ export default function MainScreen() {
   const sheetRef = useRef<BottomSheetModal>(null);
   const snapPoints = useMemo(() => ['55%', '80%', '96%'], []);
   const coordsDebugRef = useRef<string>('No location yet');
+  const watchSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
+  const stationsRef = useRef<Station[]>([]);
+  const lastGpsUpdateAtRef = useRef<number>(0);
 
   const {
     selectedStation,
@@ -121,6 +124,28 @@ export default function MainScreen() {
       sheetRef.current?.dismiss();
     },
     [setSelectedStation],
+  );
+
+  const updateFromGpsCoords = useCallback(
+    (latitude: number, longitude: number) => {
+      // Simple throttle to prevent excessive re-renders.
+      const now = Date.now();
+      if (now - lastGpsUpdateAtRef.current < 2000) return;
+      lastGpsUpdateAtRef.current = now;
+
+      const safeCoords = sanitizeCoords(latitude, longitude);
+      coordsDebugRef.current = `Live GPS: ${safeCoords.latitude.toFixed(6)}, ${safeCoords.longitude.toFixed(6)}`;
+
+      const stations = stationsRef.current;
+      if (!stations.length) return;
+
+      const rankedStations = toNearbyStations(stations, safeCoords.latitude, safeCoords.longitude);
+      setNearbyStations(rankedStations);
+
+      // Real-time destination: always override to the nearest station.
+      setSelectedStation(rankedStations[0] ?? null);
+    },
+    [setNearbyStations, setSelectedStation],
   );
 
   useEffect(() => {
@@ -155,6 +180,11 @@ export default function MainScreen() {
         fetchedStations = stations;
 
         setStations(stations);
+        stationsRef.current = stations;
+
+        // Stop any previous watch subscription before starting a new one.
+        watchSubscriptionRef.current?.remove();
+        watchSubscriptionRef.current = null;
 
         const permission = await Location.requestForegroundPermissionsAsync();
         if (!mounted) return;
@@ -210,6 +240,27 @@ export default function MainScreen() {
 
         setNearbyStations(rankedStations);
         setSelectedStation(rankedStations[0] ?? null);
+
+        // Start real-time updates only when we have permission.
+        if (permission.status === 'granted') {
+          try {
+            watchSubscriptionRef.current = await Location.watchPositionAsync(
+              {
+                accuracy: Location.Accuracy.Balanced,
+                timeInterval: 5000,
+                distanceInterval: 25,
+              },
+              (position) => {
+                updateFromGpsCoords(position.coords.latitude, position.coords.longitude);
+              },
+            );
+          } catch {
+            // Watching can fail on some devices; initial nearest station is still shown.
+          }
+        } else {
+          // When permission is denied, show station picker immediately.
+          sheetRef.current?.present();
+        }
       } catch {
         if (!mounted) return;
 
@@ -221,6 +272,7 @@ export default function MainScreen() {
         setLocationPermission('denied');
         setNearbyStations(fallbackStations);
         setSelectedStation(fallbackStations[0] ?? null);
+        sheetRef.current?.present();
       } finally {
         if (mounted) {
           setIsResolvingLocation(false);
@@ -232,6 +284,8 @@ export default function MainScreen() {
 
     return () => {
       mounted = false;
+      watchSubscriptionRef.current?.remove();
+      watchSubscriptionRef.current = null;
     };
   }, [
     setIsResolvingLocation,
@@ -239,6 +293,7 @@ export default function MainScreen() {
     setNearbyStations,
     setSelectedStation,
     setStations,
+    updateFromGpsCoords,
   ]);
 
   const renderStationItem = useCallback(
