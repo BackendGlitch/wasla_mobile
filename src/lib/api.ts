@@ -3,6 +3,7 @@ import * as SecureStore from 'expo-secure-store';
 import { router } from 'expo-router';
 import { MOCK_USER, MOCK_TOKEN, MOCK_OTP, MOCK_ROUTES, MOCK_STATIONS, MOCK_TICKETS } from './mockData';
 import type { Ticket } from './mockData';
+import { useStationStore } from '../store';
 
 // ─── Axios Instance ──────────────────────────────────────────
 const api = axios.create({
@@ -71,7 +72,16 @@ export const mockApi = {
   /** Search routes */
   getRoutes: async (_from?: string, _to?: string) => {
     await delay();
-    return MOCK_ROUTES;
+    const { selectedStation } = useStationStore.getState();
+    // Selected departure station should be authoritative across the app.
+    const from = selectedStation?.city ?? _from;
+    const to = _to;
+
+    return MOCK_ROUTES.filter((r) => {
+      const fromOk = from ? r.from === from : true;
+      const toOk = to ? r.to === to : true;
+      return fromOk && toOk;
+    });
   },
 
   /** Book a seat — returns a new ticket */

@@ -22,11 +22,10 @@ export interface Station {
 }
 
 export const MOCK_STATIONS: Station[] = [
-  { id: 'st_01', name: 'Gare Routière Bab Saadoun', city: 'Tunis', lat: 36.8065, lng: 10.1815 },
-  { id: 'st_02', name: 'Gare Routière de Sousse', city: 'Sousse', lat: 35.8256, lng: 10.6369 },
-  { id: 'st_03', name: 'Gare Routière de Sfax', city: 'Sfax', lat: 34.7406, lng: 10.7603 },
-  { id: 'st_04', name: 'Gare Routière de Monastir', city: 'Monastir', lat: 35.7643, lng: 10.8113 },
-  { id: 'st_05', name: 'Gare Routière de Gabès', city: 'Gabès', lat: 33.8815, lng: 10.0982 },
+  { id: 'st_06', name: 'Sousse Louage Station', city: 'Sousse', lat: 35.8256, lng: 10.6369 },
+  { id: 'st_07', name: 'Monastir Louage Station', city: 'Monastir', lat: 35.7778, lng: 10.8262 },
+  { id: 'st_08', name: 'Ksar Hellal Louage Station', city: 'Ksar Hellal', lat: 35.6477, lng: 10.8905 },
+  { id: 'st_09', name: 'Jammel Louage Station', city: 'Jammel', lat: 35.6223, lng: 10.756 },
 ];
 
 // ─── Mock Routes ─────────────────────────────────────────────
