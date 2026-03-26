@@ -11,6 +11,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import AuthBackdrop from '../../src/components/auth/AuthBackdrop';
 import { authColors } from '../../src/theme/authTheme';
 import { useAuthStore } from '../../src/store';
+import { authApi } from '../../src/lib';
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -40,18 +41,20 @@ export default function LoginScreen() {
     setApiError('');
     setLoading(true);
     try {
-      await new Promise((r) => setTimeout(r, 1000));
-      const mockToken = 'mock-jwt-token-email-' + Date.now();
-      const mockUser = {
-        id: 'usr_' + Date.now(),
-        name: data.email.split('@')[0],
-        phone: '+216 XX XXX XXX',
+      const result = await authApi.loginWithEmail({
         email: data.email,
-      };
+        password: data.password,
+      });
 
-      await SecureStore.setItemAsync('auth_token', mockToken);
-      setToken(mockToken);
-      setUser(mockUser);
+      await SecureStore.setItemAsync('auth_token', result.access_token);
+      setToken(result.access_token);
+      const fullName = `${result.user.firstName ?? ''} ${result.user.lastName ?? ''}`.trim();
+      setUser({
+        id: result.user.id,
+        name: fullName || data.email.split('@')[0],
+        phone: result.user.phone ?? '',
+        email: result.user.email ?? data.email,
+      });
       reset();
       router.replace('/(app)');
     } catch (e: any) {

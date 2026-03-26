@@ -6,7 +6,7 @@ import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import AuthBackdrop from '../../src/components/auth/AuthBackdrop';
 import { authColors } from '../../src/theme/authTheme';
-import { mockApi } from '../../src/lib/api';
+import { authApi, toE164TNPhone } from '../../src/lib';
 
 export default function AuthEntryScreen() {
   const router = useRouter();
@@ -23,8 +23,9 @@ export default function AuthEntryScreen() {
     setError('');
     setLoading(true);
     try {
-      await mockApi.sendOtp(phone);
-      router.push({ pathname: '/(auth)/otp', params: { phone } });
+      const phoneE164 = toE164TNPhone(phone);
+      await authApi.requestOtp({ phone: phoneE164 });
+      router.push({ pathname: '/(auth)/otp', params: { phone: phoneE164 } });
     } catch (e: any) {
       setError(e.message || 'Something went wrong');
     } finally {
@@ -89,7 +90,7 @@ export default function AuthEntryScreen() {
                   flex={1}
                   size="$4"
                   placeholder="XX XXX XXX"
-                  placeholderTextColor={authColors.textMuted}
+                  placeholderTextColor="$textMuted"
                   keyboardType="phone-pad"
                   value={phone}
                   onChangeText={setPhone}

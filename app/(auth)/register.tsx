@@ -10,7 +10,7 @@ import * as SecureStore from 'expo-secure-store';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import AuthBackdrop from '../../src/components/auth/AuthBackdrop';
 import { authColors } from '../../src/theme/authTheme';
-import { mockApi } from '../../src/lib/api';
+import { authApi, toE164TNPhone } from '../../src/lib';
 import { useAuthStore } from '../../src/store';
 
 const OTP_LENGTH = 6;
@@ -157,7 +157,7 @@ export default function RegisterScreen() {
   const handleResend = async () => {
     setStepError('');
     setOtpDigits(Array(OTP_LENGTH).fill(''));
-    await mockApi.sendOtp(getValues('phone'));
+    await authApi.requestOtp({ phone: toE164TNPhone(getValues('phone')) });
     otpInputs.current[0]?.focus();
   };
 
@@ -167,28 +167,14 @@ export default function RegisterScreen() {
     if (step === 1) {
       const valid = await trigger(stepFields[step]);
       if (!valid) return;
-      setActionLoading(true);
-      try {
-        await mockApi.sendOtp(getValues('phone'));
-        setStep(2);
-      } catch (e: any) {
-        setStepError(e.message || 'Failed to send OTP');
-      } finally {
-        setActionLoading(false);
-      }
+      // NOTE: central-server verify-otp requires an existing user.
+      // We collect phone here, then send OTP after /auth/register succeeds.
+      setStep(2);
       return;
     }
 
     if (step === 2) {
-      const code = otpDigits.join('');
-      if (code.length !== OTP_LENGTH) {
-        setStepError('Enter the full 6-digit code');
-        return;
-      }
-      if (code !== '123456') {
-        setStepError('Invalid code. Hint: use 123456');
-        return;
-      }
+      // OTP step is kept for UI continuity, but verification happens after register.
       setStep(3);
       return;
     }
@@ -207,20 +193,20 @@ export default function RegisterScreen() {
   const onSubmit = async (data: RegisterFormData) => {
     setActionLoading(true);
     try {
-      await new Promise((r) => setTimeout(r, 1200));
-      const mockToken = 'mock-jwt-token-email-' + Date.now();
-      const mockUser = {
-        id: 'usr_' + Date.now(),
-        name: `${data.firstName} ${data.lastName}`,
-        phone: `+216 ${data.phone}`,
-        email: data.email,
-      };
+      const phoneE164 = toE164TNPhone(data.phone);
 
-      await SecureStore.setItemAsync('auth_token', mockToken);
-      setToken(mockToken);
-      setUser(mockUser);
+      await authApi.register({
+        email: data.email,
+        phone: phoneE164,
+        password: data.password,
+        firstName: data.firstName,
+        lastName: data.lastName,
+      });
+
+      // After user exists, request OTP and route to OTP screen to verify + obtain JWT.
+      await authApi.requestOtp({ phone: phoneE164 });
       reset();
-      router.replace('/(app)');
+      router.push({ pathname: '/(auth)/otp', params: { phone: phoneE164 } });
     } catch (e: any) {
       setStepError(e.message || 'Registration failed. Please try again.');
     } finally {
@@ -241,10 +227,10 @@ export default function RegisterScreen() {
         <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
           <YStack flex={1} px="$5" pt="$8" pb="$6" gap="$6">
             <YStack gap="$4">
-              <Button chromeless onPress={goBack} alignSelf="flex-start" color={authColors.textSecondary}>
+              <Button chromeless onPress={goBack} style={{ alignSelf: 'flex-start' }}>
                 <XStack items="center" gap="$2">
-                  <MaterialCommunityIcons name="chevron-left" size={18} color={authColors.textSecondary} />
-                  <Text color={authColors.textSecondary}>Back</Text>
+                  <MaterialCommunityIcons name="chevron-left" size={18} color="$textSecondary" />
+                  <Text color="$textSecondary">Back</Text>
                 </XStack>
               </Button>
 
@@ -312,7 +298,7 @@ export default function RegisterScreen() {
                               flex={1}
                               size="$4"
                               placeholder="Ahmed"
-                              placeholderTextColor={authColors.textMuted}
+                              placeholderTextColor="$textMuted"
                               value={value}
                               onChangeText={onChange}
                               borderWidth={0}
@@ -353,7 +339,7 @@ export default function RegisterScreen() {
                               flex={1}
                               size="$4"
                               placeholder="Ben Ali"
-                              placeholderTextColor={authColors.textMuted}
+                              placeholderTextColor="$textMuted"
                               value={value}
                               onChangeText={onChange}
                               borderWidth={0}
@@ -403,7 +389,7 @@ export default function RegisterScreen() {
                               flex={1}
                               size="$4"
                               placeholder="XX XXX XXX"
-                              placeholderTextColor={authColors.textMuted}
+                              placeholderTextColor="$textMuted"
                               value={value}
                               onChangeText={onChange}
                               keyboardType="phone-pad"
@@ -511,7 +497,7 @@ export default function RegisterScreen() {
                               flex={1}
                               size="$4"
                               placeholder="you@email.com"
-                              placeholderTextColor={authColors.textMuted}
+                              placeholderTextColor="$textMuted"
                               keyboardType="email-address"
                               value={value}
                               onChangeText={onChange}
@@ -558,7 +544,7 @@ export default function RegisterScreen() {
                               flex={1}
                               size="$4"
                               placeholder="••••••••"
-                              placeholderTextColor={authColors.textMuted}
+                              placeholderTextColor="$textMuted"
                               secureTextEntry
                               value={value}
                               onChangeText={onChange}
@@ -600,7 +586,7 @@ export default function RegisterScreen() {
                               flex={1}
                               size="$4"
                               placeholder="••••••••"
-                              placeholderTextColor={authColors.textMuted}
+                              placeholderTextColor="$textMuted"
                               secureTextEntry
                               value={value}
                               onChangeText={onChange}

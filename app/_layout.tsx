@@ -8,6 +8,7 @@ import * as SecureStore from 'expo-secure-store';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import tamaguiConfig from '../tamagui.config';
 import { useAuthStore } from '../src/store';
+import { disconnectCentralRealtime, initCentralRealtime } from '../src/lib/realtime';
 
 // Keep splash visible while we check auth
 SplashScreen.preventAutoHideAsync();
@@ -84,6 +85,15 @@ export default function RootLayout() {
       }
     }
   }, [token, hasOnboarded, isLoading, appReady, segments]);
+
+  useEffect(() => {
+    if (!appReady || !fontsLoaded) return;
+
+    initCentralRealtime();
+    return () => {
+      disconnectCentralRealtime();
+    };
+  }, [appReady, fontsLoaded]);
 
   if (!appReady || !fontsLoaded) return null;
 

@@ -6,8 +6,9 @@ import { StatusBar } from 'expo-status-bar';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import AuthBackdrop from '../../src/components/auth/AuthBackdrop';
 import { authColors } from '../../src/theme/authTheme';
-import { mockApi } from '../../src/lib/api';
 import { useAuthStore } from '../../src/store';
+import * as SecureStore from 'expo-secure-store';
+import { authApi } from '../../src/lib';
 
 const OTP_LENGTH = 6;
 
@@ -61,9 +62,16 @@ export default function OtpScreen() {
     setError('');
     setLoading(true);
     try {
-      const result = await mockApi.verifyOtp(phone || '', code);
-      setToken(result.token);
-      setUser(result.user);
+      const result = await authApi.verifyOtp({ phone: phone || undefined, otp: code });
+      await SecureStore.setItemAsync('auth_token', result.access_token);
+      setToken(result.access_token);
+      const fullName = `${result.user.firstName ?? ''} ${result.user.lastName ?? ''}`.trim();
+      setUser({
+        id: result.user.id,
+        name: fullName || (result.user.email ? result.user.email.split('@')[0] : 'User'),
+        phone: result.user.phone ?? (phone || ''),
+        email: result.user.email ?? '',
+      });
       router.replace('/(app)');
     } catch (e: any) {
       setError(e.message || 'Verification failed');
@@ -75,7 +83,7 @@ export default function OtpScreen() {
   const handleResend = async () => {
     setError('');
     setOtp(Array(OTP_LENGTH).fill(''));
-    await mockApi.sendOtp(phone || '');
+    await authApi.requestOtp({ phone: phone || undefined });
     inputs.current[0]?.focus();
   };
 
@@ -106,7 +114,7 @@ export default function OtpScreen() {
             <Text fontSize="$4" color={authColors.textSecondary} lineHeight={22}>
               Enter the 6-digit code sent to{' '}
               <Text fontWeight="700" color={authColors.textPrimary}>
-                +216 {phone}
+                {phone}
               </Text>
             </Text>
           </YStack>
@@ -203,7 +211,7 @@ export default function OtpScreen() {
           </YStack>
 
           <Text fontSize="$2" color={authColors.textMuted} text="center">
-            Mock mode — use OTP: 123456
+            Enter the code you received (expires in 5 minutes).
           </Text>
         </YStack>
       </KeyboardAvoidingView>
