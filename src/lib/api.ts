@@ -7,7 +7,7 @@ import { useStationStore } from '../store';
 
 // ─── Axios Instance ──────────────────────────────────────────
 const api = axios.create({
-  baseURL: process.env.EXPO_PUBLIC_API_URL || 'https://api.wasla.tn/v1',
+  baseURL: process.env.EXPO_PUBLIC_CENTRAL_SERVER_URL || 'http://localhost:4000',
   timeout: 10000,
   headers: { 'Content-Type': 'application/json' },
 });
