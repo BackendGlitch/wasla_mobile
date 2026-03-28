@@ -7,13 +7,20 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import AuthBackdrop from '../../src/components/auth/AuthBackdrop';
 import { authColors } from '../../src/theme/authTheme';
 import { useAuthStore } from '../../src/store';
-import * as SecureStore from 'expo-secure-store';
-import { authApi } from '../../src/lib';
+import {
+  authApi,
+  decodeAuthRouteParam,
+  finishAuthAndNavigate,
+  getCentralApiErrorMessage,
+  singleRouteParam,
+} from '../../src/lib';
 
 const OTP_LENGTH = 6;
 
 export default function OtpScreen() {
-  const { phone } = useLocalSearchParams<{ phone: string }>();
+  const params = useLocalSearchParams<{ phone?: string; email?: string }>();
+  const phone = singleRouteParam(params.phone) ?? '';
+  const signupEmailDecoded = decodeAuthRouteParam(singleRouteParam(params.email));
   const router = useRouter();
   const { setToken, setUser } = useAuthStore();
   const [otp, setOtp] = useState<string[]>(Array(OTP_LENGTH).fill(''));
@@ -63,18 +70,12 @@ export default function OtpScreen() {
     setLoading(true);
     try {
       const result = await authApi.verifyOtp({ phone: phone || undefined, otp: code });
-      await SecureStore.setItemAsync('auth_token', result.access_token);
-      setToken(result.access_token);
-      const fullName = `${result.user.firstName ?? ''} ${result.user.lastName ?? ''}`.trim();
-      setUser({
-        id: result.user.id,
-        name: fullName || (result.user.email ? result.user.email.split('@')[0] : 'User'),
-        phone: result.user.phone ?? (phone || ''),
-        email: result.user.email ?? '',
+      await finishAuthAndNavigate(result, router, setToken, setUser, {
+        signupEmailDecoded,
+        flowPhone: phone,
       });
-      router.replace('/(app)');
-    } catch (e: any) {
-      setError(e.message || 'Verification failed');
+    } catch (e: unknown) {
+      setError(getCentralApiErrorMessage(e));
     } finally {
       setLoading(false);
     }

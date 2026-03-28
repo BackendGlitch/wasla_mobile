@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { isAxiosError } from 'axios';
 import { Platform } from 'react-native';
 
 type CentralUser = {
@@ -36,6 +36,21 @@ const centralApi = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
+/** NestJS often returns `{ message: string | string[] }` on 400. */
+export function getCentralApiErrorMessage(error: unknown): string {
+  if (isAxiosError(error)) {
+    const data = error.response?.data as
+      | { message?: string | string[] }
+      | undefined;
+    const msg = data?.message;
+    if (typeof msg === 'string') return msg;
+    if (Array.isArray(msg)) return msg.filter(Boolean).join('. ');
+    if (error.message) return error.message;
+  }
+  if (error instanceof Error) return error.message;
+  return 'Something went wrong';
+}
+
 export const authApi = {
   register: async (body: {
     email: string;
@@ -61,6 +76,11 @@ export const authApi = {
   verifyOtp: async (body: { phone?: string; email?: string; otp: string }) => {
     const res = await centralApi.post('/auth/verify-otp', body);
     return res.data as AuthTokenResponse;
+  },
+
+  checkAvailability: async (body: { email?: string; phone?: string }) => {
+    const res = await centralApi.post('/auth/check-availability', body);
+    return res.data as { emailAvailable?: boolean; phoneAvailable?: boolean };
   },
 };
 

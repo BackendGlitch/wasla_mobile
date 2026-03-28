@@ -79,12 +79,14 @@ export default function RootLayout() {
         router.replace('/(auth)');
       }
     } else {
-      // Authenticated → app
-      if (!inAppGroup) {
+      // Authenticated → app, but allow OTP / email verification while token is already issued
+      const finishingVerification =
+        segments.includes('otp') || segments.includes('verify-email');
+      if (!inAppGroup && !finishingVerification) {
         router.replace('/(app)');
       }
     }
-  }, [token, hasOnboarded, isLoading, appReady, segments]);
+  }, [token, hasOnboarded, isLoading, appReady, segments, fontsLoaded]);
 
   useEffect(() => {
     if (!appReady || !fontsLoaded) return;
