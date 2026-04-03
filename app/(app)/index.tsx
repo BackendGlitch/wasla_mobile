@@ -13,6 +13,9 @@ import type { Station } from '../../src/lib/mockData';
 import { appColors } from '../../src/theme/appTheme';
 import { useStationStore, type StationWithDistance } from '../../src/store';
 
+
+import { RoutesList } from '../../src/components/RoutesList';
+
 const DEFAULT_USER_COORDS = {
   latitude: 36.8065,
   longitude: 10.1815,
@@ -22,27 +25,20 @@ const MAX_DISTANCE_KM = 999;
 
 function normalizeCoordinate(value: number, maxAbs: number): number | null {
   if (!Number.isFinite(value)) return null;
-
   let normalized = value;
-
-  // Some providers can occasionally return scaled coordinates; normalize to degree-like values.
   while (Math.abs(normalized) > maxAbs && Math.abs(normalized) > 1) {
     normalized /= 10;
   }
-
   if (Math.abs(normalized) > maxAbs) return null;
-
   return normalized;
 }
 
 function sanitizeCoords(latitude: number, longitude: number) {
   const safeLat = normalizeCoordinate(latitude, 90);
   const safeLng = normalizeCoordinate(longitude, 180);
-
   if (safeLat === null || safeLng === null) {
     return DEFAULT_USER_COORDS;
   }
-
   return {
     latitude: safeLat,
     longitude: safeLng,
@@ -68,7 +64,6 @@ function haversineDistance(
 
 function toNearbyStations(stations: Station[], latitude: number, longitude: number): StationWithDistance[] {
   const safeUserCoords = sanitizeCoords(latitude, longitude);
-
   return stations
     .map((station) => ({
       ...station,
@@ -88,7 +83,6 @@ function toNearbyStations(stations: Station[], latitude: number, longitude: numb
 
 function formatDistance(distanceKm: number): string {
   const clampedDistance = Math.min(MAX_DISTANCE_KM, Math.max(0, distanceKm));
-
   if (clampedDistance < 1) return `${Math.round(clampedDistance * 1000)} m away`;
   if (clampedDistance >= MAX_DISTANCE_KM) return `${MAX_DISTANCE_KM} km away`;
   return `${clampedDistance.toFixed(1)} km away`;
@@ -128,7 +122,6 @@ export default function MainScreen() {
 
   const updateFromGpsCoords = useCallback(
     (latitude: number, longitude: number) => {
-      // Simple throttle to prevent excessive re-renders.
       const now = Date.now();
       if (now - lastGpsUpdateAtRef.current < 2000) return;
       lastGpsUpdateAtRef.current = now;
@@ -141,8 +134,6 @@ export default function MainScreen() {
 
       const rankedStations = toNearbyStations(stations, safeCoords.latitude, safeCoords.longitude);
       setNearbyStations(rankedStations);
-
-      // Real-time destination: always override to the nearest station.
       setSelectedStation(rankedStations[0] ?? null);
     },
     [setNearbyStations, setSelectedStation],
@@ -157,15 +148,12 @@ export default function MainScreen() {
           accuracy: Location.Accuracy.Highest,
           mayShowUserSettingsDialog: true,
         });
-
         return sanitizeCoords(livePosition.coords.latitude, livePosition.coords.longitude);
       } catch {
-        // Retry once to avoid transient GPS failures.
         const retryPosition = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.High,
           mayShowUserSettingsDialog: true,
         });
-
         return sanitizeCoords(retryPosition.coords.latitude, retryPosition.coords.longitude);
       }
     };
@@ -182,7 +170,6 @@ export default function MainScreen() {
         setStations(stations);
         stationsRef.current = stations;
 
-        // Stop any previous watch subscription before starting a new one.
         watchSubscriptionRef.current?.remove();
         watchSubscriptionRef.current = null;
 
@@ -193,23 +180,16 @@ export default function MainScreen() {
 
         if (permission.status === 'granted') {
           setLocationPermission('granted');
-
           try {
             const coords = await resolveLiveCoords();
             if (!mounted) return;
-
             userCoords = coords;
             coordsDebugRef.current = `Live GPS: ${coords.latitude.toFixed(6)}, ${coords.longitude.toFixed(6)}`;
           } catch {
             const lastKnown = await Location.getLastKnownPositionAsync();
             if (!mounted) return;
-
-            if (
-              lastKnown &&
-              Date.now() - lastKnown.timestamp <= LAST_KNOWN_MAX_AGE_MS
-            ) {
+            if (lastKnown && Date.now() - lastKnown.timestamp <= LAST_KNOWN_MAX_AGE_MS) {
               const lastKnownCoords = sanitizeCoords(lastKnown.coords.latitude, lastKnown.coords.longitude);
-
               userCoords = lastKnownCoords;
               coordsDebugRef.current = `Last known: ${lastKnownCoords.latitude.toFixed(6)}, ${lastKnownCoords.longitude.toFixed(6)}`;
             } else {
@@ -218,13 +198,10 @@ export default function MainScreen() {
           }
         } else {
           setLocationPermission('denied');
-
           const lastKnown = await Location.getLastKnownPositionAsync();
           if (!mounted) return;
-
           if (lastKnown) {
             const lastKnownCoords = sanitizeCoords(lastKnown.coords.latitude, lastKnown.coords.longitude);
-
             userCoords = lastKnownCoords;
             coordsDebugRef.current = `Permission denied, last known: ${lastKnownCoords.latitude.toFixed(6)}, ${lastKnownCoords.longitude.toFixed(6)}`;
           } else {
@@ -232,51 +209,29 @@ export default function MainScreen() {
           }
         }
 
-        const rankedStations = toNearbyStations(
-          stations,
-          userCoords.latitude,
-          userCoords.longitude,
-        );
-
+        const rankedStations = toNearbyStations(stations, userCoords.latitude, userCoords.longitude);
         setNearbyStations(rankedStations);
         setSelectedStation(rankedStations[0] ?? null);
 
-        // Start real-time updates only when we have permission.
         if (permission.status === 'granted') {
           try {
             watchSubscriptionRef.current = await Location.watchPositionAsync(
-              {
-                accuracy: Location.Accuracy.Balanced,
-                timeInterval: 5000,
-                distanceInterval: 25,
-              },
-              (position) => {
-                updateFromGpsCoords(position.coords.latitude, position.coords.longitude);
-              },
+              { accuracy: Location.Accuracy.Balanced, timeInterval: 5000, distanceInterval: 25 },
+              (position) => updateFromGpsCoords(position.coords.latitude, position.coords.longitude)
             );
-          } catch {
-            // Watching can fail on some devices; initial nearest station is still shown.
-          }
+          } catch {}
         } else {
-          // When permission is denied, show station picker immediately.
           sheetRef.current?.present();
         }
       } catch {
         if (!mounted) return;
-
-        const fallbackStations = toNearbyStations(
-          fetchedStations,
-          DEFAULT_USER_COORDS.latitude,
-          DEFAULT_USER_COORDS.longitude,
-        );
+        const fallbackStations = toNearbyStations(fetchedStations, DEFAULT_USER_COORDS.latitude, DEFAULT_USER_COORDS.longitude);
         setLocationPermission('denied');
         setNearbyStations(fallbackStations);
         setSelectedStation(fallbackStations[0] ?? null);
         sheetRef.current?.present();
       } finally {
-        if (mounted) {
-          setIsResolvingLocation(false);
-        }
+        if (mounted) setIsResolvingLocation(false);
       }
     };
 
@@ -287,19 +242,11 @@ export default function MainScreen() {
       watchSubscriptionRef.current?.remove();
       watchSubscriptionRef.current = null;
     };
-  }, [
-    setIsResolvingLocation,
-    setLocationPermission,
-    setNearbyStations,
-    setSelectedStation,
-    setStations,
-    updateFromGpsCoords,
-  ]);
+  }, [setIsResolvingLocation, setLocationPermission, setNearbyStations, setSelectedStation, setStations, updateFromGpsCoords]);
 
   const renderStationItem = useCallback(
     ({ item }: { item: StationWithDistance }) => {
       const isSelected = selectedStation?.id === item.id;
-
       return (
         <Pressable onPress={() => handleSelectStation(item)}>
           <YStack
@@ -310,12 +257,8 @@ export default function MainScreen() {
             bg={isSelected ? appColors.accentSoft : appColors.surface}
             rounded="$4"
           >
-            <Text color={appColors.textPrimary} fontSize="$5" fontWeight="700">
-              {item.name}
-            </Text>
-            <Text mt="$1" color={appColors.textSecondary} fontSize="$4">
-              {item.city}
-            </Text>
+            <Text color={appColors.textPrimary} fontSize="$5" fontWeight="700">{item.name}</Text>
+            <Text mt="$1" color={appColors.textSecondary} fontSize="$4">{item.city}</Text>
             <Text mt="$2" color={isSelected ? appColors.accent : appColors.textMuted} fontSize="$3">
               {formatDistance(item.distanceKm)}
             </Text>
@@ -329,57 +272,47 @@ export default function MainScreen() {
   return (
     <BottomSheetModalProvider>
       <YStack flex={1} bg={appColors.bg} px="$5" pt="$7" pb="$5" gap="$5">
+        
+        {/* TOP BAR: STATION SELECTOR */}
         <Pressable
           onPress={handleOpenSheet}
           disabled={isResolvingLocation || nearbyStations.length === 0}
           style={{ opacity: isResolvingLocation ? 1 : 0.98 }}
         >
-          <XStack
-            items="center"
-            justify="space-between"
-            px="$4"
-            py="$3"
-            rounded="$5"
-            borderWidth={1}
-            borderColor={appColors.borderStrong}
-            bg={appColors.surfaceStrong}
-          >
+          <XStack items="center" justify="space-between" px="$4" py="$3" rounded="$5" borderWidth={1} borderColor={appColors.borderStrong} bg={appColors.surfaceStrong}>
             {isResolvingLocation ? (
               <XStack items="center" gap="$3">
                 <ActivityIndicator color={appColors.accent} />
-                <Text color={appColors.textPrimary} fontWeight="700" fontSize="$4">
-                  Detecting nearest station...
-                </Text>
+                <Text color={appColors.textPrimary} fontWeight="700" fontSize="$4">Detecting nearest station...</Text>
               </XStack>
             ) : (
               <YStack flex={1}>
-                <Text color={appColors.textMuted} fontSize="$2" letterSpacing={0.4}>
-                  ASSIGNED STATION
-                </Text>
-                <Text mt="$1" color={appColors.textPrimary} fontSize="$5" fontWeight="700">
-                  {selectedStation?.name ?? 'No station assigned'}
-                </Text>
+                <Text color={appColors.textMuted} fontSize="$2" letterSpacing={0.4}>ASSIGNED STATION</Text>
+                <Text mt="$1" color={appColors.textPrimary} fontSize="$5" fontWeight="700">{selectedStation?.name ?? 'No station assigned'}</Text>
                 <Text mt="$1" color={appColors.accent} fontSize="$3" fontWeight="600">
-                  {selectedStation
-                    ? `${formatDistance(selectedStation.distanceKm)} • Tap to change`
-                    : 'Tap to pick a station'}
+                  {selectedStation ? `${formatDistance(selectedStation.distanceKm)} • Tap to change` : 'Tap to pick a station'}
                 </Text>
               </YStack>
             )}
           </XStack>
         </Pressable>
 
-        <YStack flex={1} justify="center" items="center" gap="$3">
-          <Text color={appColors.textPrimary} fontSize="$9" fontWeight="800">
-            Main
-          </Text>
-          <Text color={appColors.textSecondary} fontSize="$4" style={{ textAlign: 'center', maxWidth: 280 }}>
-            {locationPermission === 'denied'
-              ? 'Location is disabled. Choose your departure station manually from the station list.'
-              : 'Your nearest station is ready. Tap the station bar at the top to switch anytime.'}
-          </Text>
+        {/* 👇 2. YOUR ROUTES LIST COMPONENT GOES HERE */}
+        <YStack flex={1}>
+          {selectedStation ? (
+            <RoutesList stationId={selectedStation.id} />
+          ) : (
+            <YStack flex={1} justify="center" items="center" gap="$3">
+              <Text color={appColors.textSecondary} fontSize="$4" style={{ textAlign: 'center', maxWidth: 280 }}>
+                {isResolvingLocation 
+                  ? 'Finding your nearest station...' 
+                  : 'Please select a station to see available routes.'}
+              </Text>
+            </YStack>
+          )}
         </YStack>
 
+        {/* BOTTOM SHEET FOR CHANGING STATIONS */}
         <BottomSheetModal
           ref={sheetRef}
           index={1}
@@ -390,15 +323,9 @@ export default function MainScreen() {
           backdropComponent={(props) => <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} />}
         >
           <YStack flex={1} px="$4" pt="$2" pb="$4">
-            <Text color={appColors.textPrimary} fontSize="$7" fontWeight="800">
-              Nearby Stations
-            </Text>
-            <Text mt="$1" mb="$4" color={appColors.textSecondary} fontSize="$4">
-              Select the station you want to use as your departure point.
-            </Text>
-            <Text mb="$3" color={appColors.textMuted} fontSize="$2">
-              {coordsDebugRef.current}
-            </Text>
+            <Text color={appColors.textPrimary} fontSize="$7" fontWeight="800">Nearby Stations</Text>
+            <Text mt="$1" mb="$4" color={appColors.textSecondary} fontSize="$4">Select the station you want to use as your departure point.</Text>
+            <Text mb="$3" color={appColors.textMuted} fontSize="$2">{coordsDebugRef.current}</Text>
 
             <BottomSheetFlatList<StationWithDistance>
               data={nearbyStations}
