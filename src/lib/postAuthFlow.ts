@@ -1,6 +1,6 @@
-import * as SecureStore from 'expo-secure-store';
 import type { Router } from 'expo-router';
 import { authApi, type AuthTokenResponse } from './authApi';
+import { persistStoredToken, persistStoredUser } from './sessionStorage';
 import type { User } from '../store/authStore';
 
 /** Expo Router can mishandle `@` in path/query params — encode when passing, decode when reading. */
@@ -60,7 +60,7 @@ export async function finishAuthAndNavigate(
     flowPhone?: string;
   } = {},
 ): Promise<void> {
-  await SecureStore.setItemAsync('auth_token', result.access_token);
+  await persistStoredToken(result.access_token);
   setToken(result.access_token);
 
   const u = result.user;
@@ -74,7 +74,9 @@ export async function finishAuthAndNavigate(
     ''
   ).replace(/\s+/g, '');
 
-  setUser(buildStoreUser(result, emailNorm || u.email || '', phoneE164 || u.phone || ''));
+  const storeUser = buildStoreUser(result, emailNorm || u.email || '', phoneE164 || u.phone || '');
+  await persistStoredUser(storeUser);
+  setUser(storeUser);
 
   if (emailNorm && !isVerified(u.emailVerified)) {
     try {

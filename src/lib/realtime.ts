@@ -1,24 +1,33 @@
-import { Platform } from 'react-native';
 import { io, type Socket } from 'socket.io-client';
 import { useRealtimeStore } from '../store/realtimeStore';
+import { useStationStore } from '../store/stationStore';
+import { getCentralServerUrl } from './serverConfig';
 
 let centralSocket: Socket | null = null;
 
-const getCentralServerUrl = () => {
-  // Must be the backend host reachable from the device.
-  // - Android emulator: use `10.0.2.2` for host machine loopback.
-  // - Physical device: use your dev machine LAN IP (or an Expo tunnel).
-  // - iOS simulator usually supports `localhost`.
-  const fallback =
-    Platform.OS === 'android' ? 'http://10.0.2.2:4000' : 'http://localhost:4000';
-
-  return process.env.EXPO_PUBLIC_CENTRAL_SERVER_URL || fallback;
+type StationStatusChangedPayload = {
+  station_id?: string;
+  status?: string;
+  checked_at?: string;
 };
 
-export const initCentralRealtime = (): Socket => {
+function normalizeStationStatus(value: unknown): 'online' | 'offline' | null {
+  if (value === 'online' || value === 'offline') return value;
+  return null;
+}
+
+export const initCentralRealtime = (): Socket | null => {
   if (centralSocket) return centralSocket;
 
-  const baseUrl = getCentralServerUrl().replace(/\/+$/, '');
+  const baseUrl = getCentralServerUrl();
+  if (!baseUrl) {
+    useRealtimeStore.setState({
+      status: 'error',
+      lastError: 'Central server URL is not configured.',
+    });
+    return null;
+  }
+
   const namespaceUrl = `${baseUrl}/realtime`;
 
   useRealtimeStore.setState({
@@ -82,6 +91,15 @@ export const initCentralRealtime = (): Socket => {
     });
   });
 
+  socket.on('station.status.changed', (payload: StationStatusChangedPayload) => {
+    const stationId =
+      typeof payload?.station_id === 'string' ? payload.station_id.trim() : '';
+    const status = normalizeStationStatus(payload?.status);
+    if (!stationId || !status) return;
+
+    useStationStore.getState().applyStationStatusUpdate(stationId, status);
+  });
+
   centralSocket = socket;
   return socket;
 };
@@ -92,4 +110,3 @@ export const disconnectCentralRealtime = () => {
   centralSocket = null;
   useRealtimeStore.setState({ status: 'disconnected' });
 };
-

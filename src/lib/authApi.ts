@@ -1,5 +1,5 @@
 import axios, { isAxiosError } from 'axios';
-import { Platform } from 'react-native';
+import { getCentralServerUrl } from './serverConfig';
 
 type CentralUser = {
   id: string;
@@ -16,12 +16,6 @@ export type AuthTokenResponse = {
   user: CentralUser;
 };
 
-const getCentralBaseUrl = () => {
-  const fallback =
-    Platform.OS === 'android' ? 'http://10.0.2.2:4000' : 'http://localhost:4000';
-  return (process.env.EXPO_PUBLIC_CENTRAL_SERVER_URL || fallback).replace(/\/+$/, '');
-};
-
 export const toE164TNPhone = (input: string) => {
   const raw = String(input ?? '').trim();
   if (!raw) return '';
@@ -31,7 +25,7 @@ export const toE164TNPhone = (input: string) => {
 };
 
 const centralApi = axios.create({
-  baseURL: getCentralBaseUrl(),
+  baseURL: getCentralServerUrl() ?? undefined,
   timeout: 15000,
   headers: { 'Content-Type': 'application/json' },
 });
@@ -83,4 +77,3 @@ export const authApi = {
     return res.data as { emailAvailable?: boolean; phoneAvailable?: boolean };
   },
 };
-

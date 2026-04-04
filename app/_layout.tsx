@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Slot, useRouter, useSegments } from 'expo-router';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TamaguiProvider } from 'tamagui';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts, Sora_400Regular, Sora_500Medium, Sora_600SemiBold, Sora_700Bold } from '@expo-google-fonts/sora';
@@ -9,9 +10,20 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import tamaguiConfig from '../tamagui.config';
 import { useAuthStore } from '../src/store';
 import { disconnectCentralRealtime, initCentralRealtime } from '../src/lib/realtime';
+import { readStoredToken, readStoredUser } from '../src/lib/sessionStorage';
 
 // Keep splash visible while we check auth
 SplashScreen.preventAutoHideAsync();
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      staleTime: 5_000,
+      gcTime: 5 * 60 * 1000,
+    },
+  },
+});
 
 export default function RootLayout() {
   const router = useRouter();
@@ -30,17 +42,15 @@ export default function RootLayout() {
   useEffect(() => {
     (async () => {
       try {
-        const storedToken = await SecureStore.getItemAsync('auth_token');
-        const onboarded = await SecureStore.getItemAsync('has_onboarded');
+        const [storedToken, storedUser, onboarded] = await Promise.all([
+          readStoredToken(),
+          readStoredUser(),
+          SecureStore.getItemAsync('has_onboarded'),
+        ]);
 
         if (storedToken) {
           setToken(storedToken);
-          setUser({
-            id: 'usr_001',
-            name: 'Ahmed Ben Ali',
-            phone: '+216 XX XXX XXX',
-            email: 'ahmed@wasla.tn',
-          });
+          setUser(storedUser);
         }
         if (onboarded === 'true') {
           setHasOnboarded(true);
@@ -101,10 +111,12 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <TamaguiProvider config={tamaguiConfig} defaultTheme="dark">
-        <StatusBar style="light" />
-        <Slot />
-      </TamaguiProvider>
+      <QueryClientProvider client={queryClient}>
+        <TamaguiProvider config={tamaguiConfig} defaultTheme="dark">
+          <StatusBar style="light" />
+          <Slot />
+        </TamaguiProvider>
+      </QueryClientProvider>
     </GestureHandlerRootView>
   );
 }
