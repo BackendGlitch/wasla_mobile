@@ -33,6 +33,10 @@ const colors = {
 export default function GlossyTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const bottomOffset = Math.max(18, insets.bottom + 8);
+  const activeRouteName = state.routes[state.index]?.name;
+  const shouldShowBar = tabs.some((tab) => tab.key === activeRouteName);
+
+  if (!shouldShowBar) return null;
 
   return (
     <View style={[styles.container, { bottom: bottomOffset }]} pointerEvents="box-none">

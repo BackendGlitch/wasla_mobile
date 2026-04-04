@@ -1,10 +1,10 @@
 import { Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import * as SecureStore from 'expo-secure-store';
 import { YStack, XStack, Text, ScrollView } from 'tamagui';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/store';
+import { clearStoredSession } from '../../src/lib';
 import { appColors } from '../../src/theme/appTheme';
 
 export default function SettingsScreen() {
@@ -16,7 +16,7 @@ export default function SettingsScreen() {
 
   const handleLogout = async () => {
     try {
-      await SecureStore.deleteItemAsync('auth_token');
+      await clearStoredSession();
     } catch {
       // SecureStore may fail on web; continue
     }

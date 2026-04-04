@@ -1,7 +1,6 @@
 import { Tabs } from 'expo-router';
 import GlossyTabBar from '../../src/components/navigation/GlossyTabBar';
 
-
 export default function AppLayout() {
   return (
     <Tabs
@@ -18,7 +17,7 @@ export default function AppLayout() {
       <Tabs.Screen name="index" options={{ title: 'Main' }} />
       <Tabs.Screen name="history" options={{ title: 'History' }} />
       <Tabs.Screen name="settings" options={{ title: 'Settings' }} />
+      <Tabs.Screen name="booking" options={{ href: null }} />
     </Tabs>
-    
   );
 }
