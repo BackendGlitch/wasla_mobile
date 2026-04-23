@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import axios from 'axios';
+import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
@@ -132,6 +133,7 @@ export default function MainScreen() {
   const stationSnapPoints = useMemo(() => ['65%', '92%'], []);
   const routeSnapPoints = useMemo(() => ['62%', '88%'], []);
   const serverUrl = getCentralServerUrl();
+  const isHttpServer = typeof serverUrl === 'string' && serverUrl.startsWith('http://');
   const coordsDebugRef = useRef<string>('No location yet');
   const watchSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
   const stationsRef = useRef<Station[]>([]);
@@ -347,14 +349,34 @@ export default function MainScreen() {
             );
           } catch {}
         }
-      } catch {
+      } catch (error) {
         if (!mounted) return;
         coordsDebugRef.current = 'Could not load stations from the server';
-        setStationLoadError(
-          serverUrl
-            ? `Could not load stations from ${serverUrl}.`
-            : 'Central server URL is missing. Set EXPO_PUBLIC_CENTRAL_SERVER_URL first.',
-        );
+
+        const baseMessage = serverUrl
+          ? `Could not load stations from ${serverUrl}.`
+          : 'Central server URL is missing. Set EXPO_PUBLIC_CENTRAL_SERVER_URL first.';
+
+        let detail = '';
+        if (axios.isAxiosError(error)) {
+          const status = error.response?.status;
+          if (typeof status === 'number') {
+            detail = ` HTTP ${status}.`;
+          } else if (typeof error.message === 'string' && error.message.trim()) {
+            detail = ` ${error.message.trim()}.`;
+          }
+        } else if (error instanceof Error && error.message.trim()) {
+          detail = ` ${error.message.trim()}.`;
+        }
+
+        const hints: string[] = [];
+        if (Platform.OS === 'ios' && isHttpServer) {
+          hints.push(
+            'iOS may block plain HTTP (ATS). If this is a dev build, allow insecure loads in iOS Info.plist or switch your backend to HTTPS.',
+          );
+        }
+
+        setStationLoadError([baseMessage + detail, ...hints].filter(Boolean).join('\n'));
         setLocationPermission('undetermined');
         setNearbyStations([]);
         setSelectedStation(null);
@@ -575,7 +597,12 @@ export default function MainScreen() {
             </Text>
             {serverUrl?.includes('10.0.2.2') ? (
               <Text mt="$2" color={appColors.textMuted} fontSize="$3">
-                `10.0.2.2` works from the Android emulator only. Use your computer's local network IP for a real phone or iPhone simulator.
+                 `10.0.2.2` works from the Android emulator only. For iOS Simulator, use `http://localhost:PORT`. For a real phone, use your computer’s local network IP.
+              </Text>
+            ) : null}
+            {Platform.OS === 'ios' && isHttpServer ? (
+              <Text mt="$2" color={appColors.textMuted} fontSize="$3">
+                If you’re using a dev build, ensure iOS allows HTTP (ATS). In Expo this is configured via `ios.infoPlist.NSAppTransportSecurity` and requires rebuilding the iOS app.
               </Text>
             ) : null}
             <Pressable

@@ -17,7 +17,12 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.backendglitch.wasla"
+      "bundleIdentifier": "com.backendglitch.wasla",
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        }
+      }
     },
     "android": {
       "adaptiveIcon": {
