@@ -2,17 +2,24 @@ import axios from 'axios';
 import { router } from 'expo-router';
 import { AUTH_TOKEN_KEY, clearStoredSession } from './sessionStorage';
 import * as SecureStore from 'expo-secure-store';
-import { getCentralServerUrl } from './serverConfig';
+import { resolveCentralServerUrl } from './serverConfig';
 
 // ─── Axios Instance ──────────────────────────────────────────
 const api = axios.create({
-  baseURL: getCentralServerUrl() ?? undefined,
+  baseURL: resolveCentralServerUrl().url ?? undefined,
   timeout: 10000,
   headers: { 'Content-Type': 'application/json' },
 });
 
 // Request interceptor — inject Bearer token
 api.interceptors.request.use(async (config) => {
+  const resolved = resolveCentralServerUrl();
+  if (!resolved.url) {
+    return Promise.reject(new Error(resolved.error ?? 'Central server URL is not configured.'));
+  }
+
+  config.baseURL = resolved.url;
+
   const token = await SecureStore.getItemAsync(AUTH_TOKEN_KEY);
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;

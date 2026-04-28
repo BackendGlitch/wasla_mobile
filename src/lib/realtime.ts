@@ -1,7 +1,7 @@
 import { io, type Socket } from 'socket.io-client';
 import { useRealtimeStore } from '../store/realtimeStore';
 import { useStationStore } from '../store/stationStore';
-import { getCentralServerUrl } from './serverConfig';
+import { resolveCentralServerUrl } from './serverConfig';
 
 let centralSocket: Socket | null = null;
 
@@ -19,16 +19,16 @@ function normalizeStationStatus(value: unknown): 'online' | 'offline' | null {
 export const initCentralRealtime = (): Socket | null => {
   if (centralSocket) return centralSocket;
 
-  const baseUrl = getCentralServerUrl();
-  if (!baseUrl) {
+  const resolved = resolveCentralServerUrl();
+  if (!resolved.url) {
     useRealtimeStore.setState({
       status: 'error',
-      lastError: 'Central server URL is not configured.',
+      lastError: resolved.error ?? 'Central server URL is not configured.',
     });
     return null;
   }
 
-  const namespaceUrl = `${baseUrl}/realtime`;
+  const namespaceUrl = `${resolved.url}/realtime`;
 
   useRealtimeStore.setState({
     status: 'connecting',
