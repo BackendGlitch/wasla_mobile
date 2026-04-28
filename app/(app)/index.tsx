@@ -15,7 +15,7 @@ import { Text, XStack, YStack } from 'tamagui';
 import { getStations, type Station } from '../../src/lib/stationsApi';
 import { getStationRoutes, type RouteData } from '../../src/lib/routesApi';
 import { buildBookingRouteMeta, formatCurrency, formatIssuedAt } from '../../src/lib/bookingFlow';
-import { getCentralServerUrl } from '../../src/lib/serverConfig';
+import { resolveCentralServerUrl } from '../../src/lib/serverConfig';
 import { appColors } from '../../src/theme/appTheme';
 import { useBookingStore, useStationStore, type StationWithDistance } from '../../src/store';
 
@@ -132,7 +132,8 @@ export default function MainScreen() {
   const routeSheetRef = useRef<BottomSheetModal>(null);
   const stationSnapPoints = useMemo(() => ['65%', '92%'], []);
   const routeSnapPoints = useMemo(() => ['62%', '88%'], []);
-  const serverUrl = getCentralServerUrl();
+  const centralServer = useMemo(() => resolveCentralServerUrl(), []);
+  const serverUrl = centralServer.url;
   const isHttpServer = typeof serverUrl === 'string' && serverUrl.startsWith('http://');
   const coordsDebugRef = useRef<string>('No location yet');
   const watchSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
@@ -355,18 +356,18 @@ export default function MainScreen() {
 
         const baseMessage = serverUrl
           ? `Could not load stations from ${serverUrl}.`
-          : 'Central server URL is missing. Set EXPO_PUBLIC_CENTRAL_SERVER_URL first.';
+          : (centralServer.error ?? 'Central server URL is not configured.');
 
-        let detail = '';
+        let detail: string | null = null;
         if (axios.isAxiosError(error)) {
           const status = error.response?.status;
           if (typeof status === 'number') {
-            detail = ` HTTP ${status}.`;
+            detail = `HTTP ${status}`;
           } else if (typeof error.message === 'string' && error.message.trim()) {
-            detail = ` ${error.message.trim()}.`;
+            detail = error.message.trim();
           }
         } else if (error instanceof Error && error.message.trim()) {
-          detail = ` ${error.message.trim()}.`;
+          detail = error.message.trim();
         }
 
         const hints: string[] = [];
@@ -376,7 +377,8 @@ export default function MainScreen() {
           );
         }
 
-        setStationLoadError([baseMessage + detail, ...hints].filter(Boolean).join('\n'));
+        const detailSuffix = detail ? ` ${detail.endsWith('.') ? detail : `${detail}.`}` : '';
+        setStationLoadError([baseMessage + detailSuffix, ...hints].filter(Boolean).join('\n'));
         setLocationPermission('undetermined');
         setNearbyStations([]);
         setSelectedStation(null);

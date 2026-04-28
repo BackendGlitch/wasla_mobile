@@ -1,8 +1,8 @@
-import Constants from 'expo-constants';
-import { NativeModules, Platform } from 'react-native';
+import { Platform } from 'react-native';
 
 const ANDROID_EMULATOR_HOST = '10.0.2.2';
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1']);
+const CENTRAL_SERVER_URL_ENV = 'EXPO_PUBLIC_CENTRAL_SERVER_URL';
 
 function stripTrailingSlashes(value: string): string {
   return value.replace(/\/+$/, '');
@@ -12,58 +12,80 @@ function isLoopbackHost(hostname: string): boolean {
   return LOOPBACK_HOSTS.has(hostname);
 }
 
-function inferDevMachineHost(): string | null {
-  const scriptUrl = NativeModules?.SourceCode?.scriptURL as string | undefined;
-  if (scriptUrl) {
-    try {
-      const url = new URL(scriptUrl);
-      if (url.hostname && !isLoopbackHost(url.hostname)) return url.hostname;
-    } catch {
-      // ignore
-    }
+export type CentralServerUrlResolution = {
+  url: string | null;
+  error: string | null;
+  raw: string | null;
+};
+
+function parseHttpUrl(value: string): { url: URL | null; error: string | null } {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return {
+      url: null,
+      error: `Invalid ${CENTRAL_SERVER_URL_ENV}. Expected an absolute http(s) URL (example: https://api.example.com).`,
+    };
   }
 
-  const candidates: unknown[] = [
-    (Constants as any)?.expoConfig?.hostUri,
-    (Constants as any)?.expoGoConfig?.debuggerHost,
-    (Constants as any)?.manifest?.debuggerHost,
-    (Constants as any)?.manifest2?.extra?.expoClient?.hostUri,
-  ];
-
-  for (const candidate of candidates) {
-    if (typeof candidate !== 'string' || candidate.trim() === '') continue;
-    const maybeHostPort = candidate.replace(/^https?:\/\//, '').split('/')[0] ?? '';
-    const host = maybeHostPort.split(':')[0] ?? '';
-    if (host && !isLoopbackHost(host)) return host;
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return {
+      url: null,
+      error: `Invalid ${CENTRAL_SERVER_URL_ENV}. Only http:// and https:// URLs are supported.`,
+    };
   }
 
-  return null;
+  return { url, error: null };
+}
+
+function applyDevOnlyEmulatorRewrites(url: URL): URL {
+  const next = new URL(url.toString());
+
+  // Keep endpoint resolution deterministic:
+  // - Never infer or replace a non-loopback hostname.
+  // - Only rewrite for the emulator/simulator loopback edge cases, and only in dev.
+  if (!__DEV__) return next;
+
+  if (Platform.OS === 'android' && isLoopbackHost(next.hostname)) {
+    next.hostname = ANDROID_EMULATOR_HOST;
+  }
+
+  if (Platform.OS === 'ios' && next.hostname === ANDROID_EMULATOR_HOST) {
+    next.hostname = 'localhost';
+  }
+
+  return next;
+}
+
+export function resolveCentralServerUrl(): CentralServerUrlResolution {
+  const raw = process.env.EXPO_PUBLIC_CENTRAL_SERVER_URL?.trim() ?? null;
+  if (!raw) {
+    return {
+      url: null,
+      raw: null,
+      error: `Central server URL is missing. Set ${CENTRAL_SERVER_URL_ENV} to an absolute http(s) URL.`,
+    };
+  }
+
+  const cleaned = stripTrailingSlashes(raw);
+  const parsed = parseHttpUrl(cleaned);
+  if (!parsed.url) {
+    return {
+      url: null,
+      raw,
+      error: parsed.error,
+    };
+  }
+
+  const rewritten = applyDevOnlyEmulatorRewrites(parsed.url);
+  return {
+    url: stripTrailingSlashes(rewritten.toString()),
+    raw,
+    error: null,
+  };
 }
 
 export function getCentralServerUrl(): string | null {
-  const raw = process.env.EXPO_PUBLIC_CENTRAL_SERVER_URL?.trim();
-  if (!raw) return null;
-
-  const cleaned = stripTrailingSlashes(raw);
-  let url: URL;
-  try {
-    url = new URL(cleaned);
-  } catch {
-    return cleaned;
-  }
-
-  if (isLoopbackHost(url.hostname) || url.hostname === ANDROID_EMULATOR_HOST) {
-    const host = inferDevMachineHost();
-    if (host) url.hostname = host;
-  }
-
-  if (Platform.OS === 'android' && isLoopbackHost(url.hostname)) {
-    url.hostname = ANDROID_EMULATOR_HOST;
-  }
-
-  if (Platform.OS === 'ios' && url.hostname === ANDROID_EMULATOR_HOST) {
-    url.hostname = 'localhost';
-  }
-
-  return stripTrailingSlashes(url.toString());
+  return resolveCentralServerUrl().url;
 }

@@ -1,5 +1,5 @@
 import axios, { isAxiosError } from 'axios';
-import { getCentralServerUrl } from './serverConfig';
+import { resolveCentralServerUrl } from './serverConfig';
 
 type CentralUser = {
   id: string;
@@ -25,9 +25,19 @@ export const toE164TNPhone = (input: string) => {
 };
 
 const centralApi = axios.create({
-  baseURL: getCentralServerUrl() ?? undefined,
+  baseURL: resolveCentralServerUrl().url ?? undefined,
   timeout: 15000,
   headers: { 'Content-Type': 'application/json' },
+});
+
+centralApi.interceptors.request.use((config) => {
+  const resolved = resolveCentralServerUrl();
+  if (!resolved.url) {
+    return Promise.reject(new Error(resolved.error ?? 'Central server URL is not configured.'));
+  }
+
+  config.baseURL = resolved.url;
+  return config;
 });
 
 /** NestJS often returns `{ message: string | string[] }` on 400. */
