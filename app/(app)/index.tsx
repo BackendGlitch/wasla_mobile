@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import axios from 'axios';
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
@@ -16,6 +15,7 @@ import { getStations, type Station } from '../../src/lib/stationsApi';
 import { getStationRoutes, type RouteData } from '../../src/lib/routesApi';
 import { buildBookingRouteMeta, formatCurrency, formatIssuedAt } from '../../src/lib/bookingFlow';
 import { resolveCentralServerUrl } from '../../src/lib/serverConfig';
+import { toNetworkErrorInfo, toUserFacingErrorCopy } from '../../src/lib/networkErrors';
 import { appColors } from '../../src/theme/appTheme';
 import { useBookingStore, useStationStore, type StationWithDistance } from '../../src/store';
 
@@ -143,11 +143,14 @@ export default function MainScreen() {
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
   const [stationLoadError, setStationLoadError] = useState<string | null>(null);
   const [stationRefreshTick, setStationRefreshTick] = useState(0);
+  const [stationPageSize, setStationPageSize] = useState(25);
+  const [routePageSize, setRoutePageSize] = useState(20);
 
   const {
     selectedStation,
     nearbyStations,
     isResolvingLocation,
+    locationPermission,
     setStations,
     setNearbyStations,
     setSelectedStation,
@@ -158,9 +161,57 @@ export default function MainScreen() {
 
   const { data: routeOptions, isLoading: isLoadingRoutes, isError: isRouteError, refetch: refetchRoutes } = useQuery({
     queryKey: ['booking-routes', draftStation?.id],
-    queryFn: () => getStationRoutes(draftStation?.id ?? ''),
+    queryFn: ({ signal }) => getStationRoutes(draftStation?.id ?? '', { signal }),
     enabled: !!draftStation?.id && draftStation.status === 'online',
+    retry: 2,
+    retryDelay: (attemptIndex) => Math.min(8_000, 500 * 2 ** attemptIndex),
   });
+
+  const visibleNearbyStations = useMemo(
+    () => nearbyStations.slice(0, stationPageSize),
+    [nearbyStations, stationPageSize],
+  );
+
+  const canLoadMoreStations = nearbyStations.length > visibleNearbyStations.length;
+
+  const visibleRoutes = useMemo(
+    () => (routeOptions ?? []).slice(0, routePageSize),
+    [routeOptions, routePageSize],
+  );
+
+  const canLoadMoreRoutes = (routeOptions?.length ?? 0) > visibleRoutes.length;
+
+  const renderStationListFooter = useCallback(() => {
+    if (!canLoadMoreStations) return <View style={{ height: 18 }} />;
+    return (
+      <Pressable
+        onPress={() => setStationPageSize((value) => Math.min(nearbyStations.length, value + 25))}
+        style={({ pressed }) => [styles.loadMoreButton, pressed ? styles.buttonPressed : null]}
+      >
+        <Text color={appColors.textPrimary} fontSize="$3" fontWeight="800">
+          Load more stations
+        </Text>
+      </Pressable>
+    );
+  }, [canLoadMoreStations, nearbyStations.length]);
+
+  const renderRoutesListFooter = useCallback(() => {
+    if (!canLoadMoreRoutes) return <View style={{ height: 18 }} />;
+    return (
+      <Pressable
+        onPress={() => setRoutePageSize((value) => Math.min(routeOptions?.length ?? value, value + 20))}
+        style={({ pressed }) => [styles.loadMoreButton, pressed ? styles.buttonPressed : null]}
+      >
+        <Text color={appColors.textPrimary} fontSize="$3" fontWeight="800">
+          Load more routes
+        </Text>
+      </Pressable>
+    );
+  }, [canLoadMoreRoutes, routeOptions?.length]);
+
+  useEffect(() => {
+    setRoutePageSize(20);
+  }, [draftStation?.id]);
 
   const selectedRoute = useMemo(
     () => routeOptions?.find((route) => String(route.id) === selectedRouteId) ?? null,
@@ -170,8 +221,17 @@ export default function MainScreen() {
   const openBookingFlow = useCallback(() => {
     setDraftStation(selectedStation);
     setSelectedRouteId(null);
+    setStationPageSize(25);
     stationSheetRef.current?.present();
   }, [selectedStation]);
+
+  const openStationPicker = useCallback(() => {
+    const fallback = pickDefaultStation(nearbyStations);
+    setDraftStation(selectedStation ?? fallback);
+    setSelectedRouteId(null);
+    setStationPageSize(25);
+    stationSheetRef.current?.present();
+  }, [nearbyStations, selectedStation]);
 
   const handleSelectStation = useCallback((station: StationWithDistance) => {
     setDraftStation(station);
@@ -182,6 +242,7 @@ export default function MainScreen() {
     if (!draftStation) return;
     setSelectedStation(draftStation);
     stationSheetRef.current?.dismiss();
+    setRoutePageSize(20);
     setTimeout(() => routeSheetRef.current?.present(), 220);
   }, [draftStation, setSelectedStation]);
 
@@ -235,6 +296,7 @@ export default function MainScreen() {
 
   useEffect(() => {
     let mounted = true;
+    const stationsAbort = new AbortController();
 
     const resolveLiveCoords = async () => {
       try {
@@ -261,7 +323,7 @@ export default function MainScreen() {
       setStationLoadError(null);
 
       try {
-        const stations = await getStations();
+        const stations = await getStations({ signal: stationsAbort.signal });
         if (!mounted) return;
 
         setStations(stations);
@@ -352,23 +414,13 @@ export default function MainScreen() {
         }
       } catch (error) {
         if (!mounted) return;
+        if (toNetworkErrorInfo(error).kind === 'cancelled') return;
         coordsDebugRef.current = 'Could not load stations from the server';
 
         const baseMessage = serverUrl
           ? `Could not load stations from ${serverUrl}.`
           : (centralServer.error ?? 'Central server URL is not configured.');
-
-        let detail: string | null = null;
-        if (axios.isAxiosError(error)) {
-          const status = error.response?.status;
-          if (typeof status === 'number') {
-            detail = `HTTP ${status}`;
-          } else if (typeof error.message === 'string' && error.message.trim()) {
-            detail = error.message.trim();
-          }
-        } else if (error instanceof Error && error.message.trim()) {
-          detail = error.message.trim();
-        }
+        const friendly = toUserFacingErrorCopy(error, baseMessage);
 
         const hints: string[] = [];
         if (Platform.OS === 'ios' && isHttpServer) {
@@ -377,8 +429,8 @@ export default function MainScreen() {
           );
         }
 
-        const detailSuffix = detail ? ` ${detail.endsWith('.') ? detail : `${detail}.`}` : '';
-        setStationLoadError([baseMessage + detailSuffix, ...hints].filter(Boolean).join('\n'));
+        const detailSuffix = friendly.detail ? ` ${friendly.detail}` : '';
+        setStationLoadError([friendly.title + detailSuffix, ...hints].filter(Boolean).join('\n'));
         setLocationPermission('undetermined');
         setNearbyStations([]);
         setSelectedStation(null);
@@ -391,6 +443,7 @@ export default function MainScreen() {
 
     return () => {
       mounted = false;
+      stationsAbort.abort();
       watchSubscriptionRef.current?.remove();
       watchSubscriptionRef.current = null;
     };
@@ -417,7 +470,11 @@ export default function MainScreen() {
       const statusColors = getStatusColors(item.status, isSelected);
 
       return (
-        <Pressable onPress={() => handleSelectStation(item)}>
+        <Pressable
+          onPress={() => handleSelectStation(item)}
+          testID={`station-option-${item.id}`}
+          accessibilityLabel={`Station option ${item.name}`}
+        >
           <YStack
             p="$4"
             mb="$2"
@@ -461,6 +518,8 @@ export default function MainScreen() {
       return (
         <Pressable
           onPress={() => !isFull && setSelectedRouteId(String(item.id))}
+          testID={`route-option-${String(item.id)}`}
+          accessibilityLabel={`Route option ${meta.destinationName}`}
           disabled={isFull}
           style={({ pressed }) => [
             styles.routeCard,
@@ -563,6 +622,7 @@ export default function MainScreen() {
             <Pressable
               disabled={!canOpenBooking}
               onPress={openBookingFlow}
+              testID="start-booking"
               style={({ pressed }) => [
                 styles.primaryButton,
                 !canOpenBooking ? styles.buttonDisabled : null,
@@ -576,6 +636,24 @@ export default function MainScreen() {
                 </Text>
               </XStack>
             </Pressable>
+
+            {locationPermission !== 'granted' && nearbyStations.length > 0 && !isResolvingLocation ? (
+              <Pressable
+                onPress={openStationPicker}
+                testID="choose-station-manual"
+                style={({ pressed }) => [
+                  styles.secondaryButton,
+                  pressed ? styles.buttonPressed : null,
+                ]}
+              >
+                <XStack items="center" justify="center" gap="$2">
+                  <MaterialCommunityIcons name="map-marker-radius-outline" size={18} color={appColors.textPrimary} />
+                  <Text color={appColors.textPrimary} fontSize="$4" fontWeight="800">
+                    Choose station manually
+                  </Text>
+                </XStack>
+              </Pressable>
+            ) : null}
 
             {!canOpenBooking ? (
               <Text color={appColors.textMuted} fontSize="$3">
@@ -713,16 +791,33 @@ export default function MainScreen() {
             </Text>
 
             <BottomSheetFlatList<StationWithDistance>
-              data={nearbyStations}
-              keyExtractor={(item) => item.id}
+              data={visibleNearbyStations}
+              keyExtractor={(item: StationWithDistance) => item.id}
               renderItem={renderStationItem}
               contentContainerStyle={{ paddingBottom: 112 }}
               showsVerticalScrollIndicator={false}
+              ListFooterComponent={renderStationListFooter}
+              ListEmptyComponent={
+                isResolvingLocation ? (
+                  <View style={{ paddingTop: 12, paddingBottom: 80, gap: 12 }}>
+                    {[0, 1, 2, 3].map((index) => (
+                      <View key={index} style={styles.skeletonCard} />
+                    ))}
+                  </View>
+                ) : (
+                  <View style={styles.centerState}>
+                    <Text color={appColors.textSecondary} fontSize="$4" style={styles.centeredText}>
+                      No stations available yet.
+                    </Text>
+                  </View>
+                )
+              }
             />
 
             <Pressable
               disabled={!canContinueStation}
               onPress={handleStationNext}
+              testID="station-next"
               style={({ pressed }) => [
                 styles.sheetButton,
                 !canContinueStation ? styles.buttonDisabled : null,
@@ -784,8 +879,8 @@ export default function MainScreen() {
               </View>
             ) : (
               <BottomSheetFlatList<RouteData>
-                data={routeOptions ?? []}
-                keyExtractor={(item) => String(item.id)}
+                data={visibleRoutes}
+                keyExtractor={(item: RouteData) => String(item.id)}
                 renderItem={renderRouteItem}
                 contentContainerStyle={{ paddingVertical: 16, paddingBottom: 112, gap: 12 }}
                 ListEmptyComponent={
@@ -796,12 +891,14 @@ export default function MainScreen() {
                   </View>
                 }
                 showsVerticalScrollIndicator={false}
+                ListFooterComponent={renderRoutesListFooter}
               />
             )}
 
             <Pressable
               disabled={!canContinueRoute}
               onPress={handleRouteNext}
+              testID="route-next"
               style={({ pressed }) => [
                 styles.sheetButton,
                 !canContinueRoute ? styles.buttonDisabled : null,
@@ -846,6 +943,15 @@ const styles = StyleSheet.create({
     backgroundColor: appColors.accent,
     paddingVertical: 16,
     paddingHorizontal: 20,
+  },
+  secondaryButton: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: appColors.borderStrong,
+    backgroundColor: appColors.surfaceStrong,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    marginTop: 12,
   },
   errorCard: {
     borderRadius: 22,
@@ -941,6 +1047,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
   },
+  loadMoreButton: {
+    marginTop: 14,
+    marginBottom: 16,
+    alignSelf: 'center',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: appColors.borderStrong,
+    backgroundColor: appColors.surfaceStrong,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+  },
   sheetButton: {
     position: 'absolute',
     left: 16,
@@ -968,5 +1085,13 @@ const styles = StyleSheet.create({
   },
   centeredText: {
     textAlign: 'center',
+  },
+  skeletonCard: {
+    height: 86,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: appColors.border,
+    backgroundColor: appColors.surface,
+    opacity: 0.65,
   },
 });

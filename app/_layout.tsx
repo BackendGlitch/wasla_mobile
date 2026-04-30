@@ -11,6 +11,7 @@ import tamaguiConfig from '../tamagui.config';
 import { useAuthStore } from '../src/store';
 import { disconnectCentralRealtime, initCentralRealtime } from '../src/lib/realtime';
 import { readStoredToken, readStoredUser } from '../src/lib/sessionStorage';
+import { initObservability, setUser as setObservabilityUser } from '../src/lib/observability';
 
 // Keep splash visible while we check auth
 SplashScreen.preventAutoHideAsync();
@@ -18,7 +19,8 @@ SplashScreen.preventAutoHideAsync();
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      retry: 1,
+      retry: 2,
+      retryDelay: (attemptIndex) => Math.min(8_000, 500 * 2 ** attemptIndex),
       staleTime: 5_000,
       gcTime: 5 * 60 * 1000,
     },
@@ -51,6 +53,9 @@ export default function RootLayout() {
         if (storedToken) {
           setToken(storedToken);
           setUser(storedUser);
+          if (storedUser) {
+            setObservabilityUser({ id: storedUser.id, email: storedUser.email, username: storedUser.name });
+          }
         }
         if (onboarded === 'true') {
           setHasOnboarded(true);
@@ -59,6 +64,7 @@ export default function RootLayout() {
         // SecureStore may fail on web; ignore
       } finally {
         setLoading(false);
+        initObservability();
         setAppReady(true);
       }
     })();

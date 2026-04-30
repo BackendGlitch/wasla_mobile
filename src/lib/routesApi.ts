@@ -8,7 +8,10 @@ export interface RouteData {
 }
 
 // The clean function to fetch routes
-export const getStationRoutes = async (stationId: string): Promise<RouteData[]> => {
-  const response = await api.get(`/stations/${stationId}/routes`);
+export const getStationRoutes = async (
+  stationId: string,
+  options?: { signal?: AbortSignal },
+): Promise<RouteData[]> => {
+  const response = await api.get(`/stations/${stationId}/routes`, { signal: options?.signal });
   return response.data;
 };

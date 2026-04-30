@@ -67,3 +67,9 @@ Note for interns:
 - Physical device: replace with the dev machine LAN IP (or use an Expo tunnel), because `localhost` points to the phone itself.
 
 Connection state is available via `useRealtimeStore` (`status`, `lastReadyAt`, `lastPongAt`, `lastPong`, `lastError`).
+
+## Tests / Release
+
+- Unit tests: `node --test test/*.test.cjs` (build first with `node node_modules/typescript/bin/tsc -p tsconfig.unit.json`).
+- E2E smoke (Maestro): see `.maestro/smoke_login_booking.yaml` and `docs/release-checklist.md`.
+- Sentry setup (optional): `docs/observability.md`.

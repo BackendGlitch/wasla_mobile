@@ -1,10 +1,11 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { useIsFocused } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { Text } from 'tamagui';
 import { getStationRoutes, type RouteData } from '../lib/routesApi';
+import { toUserFacingErrorCopy } from '../lib/networkErrors';
 import { appColors } from '../theme/appTheme';
 
 interface RoutesListProps {
@@ -16,15 +17,17 @@ export const RoutesList = ({ stationId }: RoutesListProps) => {
   const isFocused = useIsFocused();
   const [isPullRefreshing, setIsPullRefreshing] = useState(false);
 
-  const { data, isLoading, isError, refetch } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['routes', stationId],
-    queryFn: () => getStationRoutes(stationId),
+    queryFn: ({ signal }) => getStationRoutes(stationId, { signal }),
     refetchInterval: isFocused ? 10_000 : false,
     refetchIntervalInBackground: false,
     enabled: !!stationId,
+    retry: 2,
+    retryDelay: (attemptIndex) => Math.min(8_000, 500 * 2 ** attemptIndex),
   });
 
-  const routes = data ?? [];
+  const routes = useMemo(() => data ?? [], [data]);
 
   const handleRefresh = useCallback(async () => {
     setIsPullRefreshing(true);
@@ -67,10 +70,11 @@ export const RoutesList = ({ stationId }: RoutesListProps) => {
   }
 
   if (isError && !data) {
+    const friendly = toUserFacingErrorCopy(error, 'Could not load routes.');
     return (
       <View style={styles.center}>
         <Text color={appColors.textPrimary} fontSize="$4" style={styles.centerText}>
-          Could not load routes. Tap to retry.
+          {friendly.title}{friendly.detail ? ` ${friendly.detail}` : ''} Tap to retry.
         </Text>
         <Pressable style={styles.retryButton} onPress={() => void handleRefresh()}>
           <Text color={appColors.textPrimary} fontSize="$3" fontWeight="700">
@@ -91,7 +95,7 @@ export const RoutesList = ({ stationId }: RoutesListProps) => {
     );
   }
 
-  const renderRouteCard = ({ item }: { item: RouteData }) => {
+  const renderRouteCard = useCallback(({ item }: { item: RouteData }) => {
     const isFull = item.available_seats === 0;
     const isAlmostFull = item.available_seats <= 2 && !isFull;
 
@@ -134,7 +138,9 @@ export const RoutesList = ({ stationId }: RoutesListProps) => {
         </Text>
       </Pressable>
     );
-  };
+  }, [handleRoutePress]);
+
+  const keyExtractor = useCallback((item: RouteData) => item.id.toString(), []);
 
   return (
     <View style={styles.container}>
@@ -148,7 +154,7 @@ export const RoutesList = ({ stationId }: RoutesListProps) => {
 
       <FlatList
         data={routes}
-        keyExtractor={(item) => item.id.toString()}
+        keyExtractor={keyExtractor}
         renderItem={renderRouteCard}
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}

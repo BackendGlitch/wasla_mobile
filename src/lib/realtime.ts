@@ -4,6 +4,13 @@ import { useStationStore } from '../store/stationStore';
 import { resolveCentralServerUrl } from './serverConfig';
 
 let centralSocket: Socket | null = null;
+let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+let staleCheckInterval: ReturnType<typeof setInterval> | null = null;
+let lastPongTs = 0;
+let connectedTs = 0;
+
+const HEARTBEAT_INTERVAL_MS = 15_000;
+const STALE_AFTER_MS = 45_000;
 
 type StationStatusChangedPayload = {
   station_id?: string;
@@ -40,7 +47,10 @@ export const initCentralRealtime = (): Socket | null => {
     autoConnect: true,
     reconnection: true,
     reconnectionAttempts: Infinity,
-    reconnectionDelay: 1000,
+    reconnectionDelay: 800,
+    reconnectionDelayMax: 5_000,
+    randomizationFactor: 0.5,
+    timeout: 10_000,
   });
 
   // Socket.IO reconnection lifecycle events happen on the underlying manager.
@@ -56,6 +66,8 @@ export const initCentralRealtime = (): Socket | null => {
   });
 
   socket.on('connect', () => {
+    connectedTs = Date.now();
+    lastPongTs = 0;
     useRealtimeStore.setState({ status: 'connected', lastError: null });
   });
 
@@ -85,11 +97,38 @@ export const initCentralRealtime = (): Socket | null => {
   });
 
   socket.on('pong', (payload: unknown) => {
+    lastPongTs = Date.now();
     useRealtimeStore.setState({
       lastPongAt: new Date().toISOString(),
       lastPong: payload,
     });
   });
+
+  heartbeatInterval = setInterval(() => {
+    if (!socket.connected) return;
+    socket.emit('ping', { source: 'wasla_mobile', timestamp: Date.now() });
+  }, HEARTBEAT_INTERVAL_MS);
+
+  staleCheckInterval = setInterval(() => {
+    if (!socket.connected) return;
+
+    const now = Date.now();
+    const baseline = lastPongTs || connectedTs;
+    if (!baseline) return;
+
+    if (now - baseline > STALE_AFTER_MS) {
+      useRealtimeStore.setState({
+        status: 'disconnected',
+        lastError: 'Live connection went stale. Reconnecting...',
+      });
+
+      // Force a reconnect cycle.
+      socket.disconnect();
+      socket.connect();
+      connectedTs = now;
+      lastPongTs = 0;
+    }
+  }, 5_000);
 
   socket.on('station.status.changed', (payload: StationStatusChangedPayload) => {
     const stationId =
@@ -106,6 +145,16 @@ export const initCentralRealtime = (): Socket | null => {
 
 export const disconnectCentralRealtime = () => {
   if (!centralSocket) return;
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
+  }
+  if (staleCheckInterval) {
+    clearInterval(staleCheckInterval);
+    staleCheckInterval = null;
+  }
+  lastPongTs = 0;
+  connectedTs = 0;
   centralSocket.disconnect();
   centralSocket = null;
   useRealtimeStore.setState({ status: 'disconnected' });

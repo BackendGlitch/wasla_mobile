@@ -1,5 +1,7 @@
 import axios, { isAxiosError } from 'axios';
 import { resolveCentralServerUrl } from './serverConfig';
+import { attachAxiosRetry } from './httpRetry';
+import { breadcrumbCentralBaseUrlResolution } from './observability';
 
 type CentralUser = {
   id: string;
@@ -30,13 +32,17 @@ const centralApi = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
+attachAxiosRetry(centralApi, { maxRetries: 1 });
+
 centralApi.interceptors.request.use((config) => {
   const resolved = resolveCentralServerUrl();
   if (!resolved.url) {
+    breadcrumbCentralBaseUrlResolution(resolved);
     return Promise.reject(new Error(resolved.error ?? 'Central server URL is not configured.'));
   }
 
   config.baseURL = resolved.url;
+  breadcrumbCentralBaseUrlResolution(resolved);
   return config;
 });
 

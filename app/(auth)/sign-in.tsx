@@ -137,6 +137,7 @@ export default function SignInScreen() {
                 setPhoneError('');
                 setEmailError('');
               }}
+              testID="signin-mode-phone"
               style={{ flex: 1 }}
             >
               <YStack
@@ -161,6 +162,7 @@ export default function SignInScreen() {
                 setPhoneError('');
                 setEmailError('');
               }}
+              testID="signin-mode-email"
               style={{ flex: 1 }}
             >
               <YStack
@@ -283,6 +285,7 @@ export default function SignInScreen() {
                         <MaterialCommunityIcons name="email-outline" size={18} color={authColors.textMuted} />
                         <Input
                           flex={1}
+                          testID="signin-email"
                           size="$4"
                           placeholder="you@email.com"
                           placeholderTextColor="$textMuted"
@@ -324,6 +327,7 @@ export default function SignInScreen() {
                         <MaterialCommunityIcons name="lock-outline" size={18} color={authColors.textMuted} />
                         <Input
                           flex={1}
+                          testID="signin-password"
                           size="$4"
                           placeholder="Your password"
                           placeholderTextColor="$textMuted"
@@ -352,6 +356,7 @@ export default function SignInScreen() {
                 <Pressable
                   onPress={handleSubmit(onEmailLogin)}
                   disabled={!isValid || emailLoading}
+                  testID="signin-submit"
                   style={({ pressed }) => ({
                     paddingVertical: 16,
                     borderRadius: 14,
