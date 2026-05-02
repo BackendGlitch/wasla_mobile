@@ -1,3 +1,6 @@
+import { isAxiosError } from 'axios';
+import Constants from 'expo-constants';
+
 type BreadcrumbLevel = 'debug' | 'info' | 'warning' | 'error';
 
 type Breadcrumb = {
@@ -38,6 +41,39 @@ function loadSentry(): SentryLike | null {
   }
 }
 
+function buildReleaseAndDist(): { release?: string; dist?: string } {
+  const slug = Constants.expoConfig?.slug ?? 'wasla_mobile';
+  const version = Constants.expoConfig?.version ?? 'unknown';
+  const nb = Constants.nativeBuildVersion;
+  const dist =
+    nb ??
+    Constants.expoConfig?.ios?.buildNumber ??
+    (Constants.expoConfig?.android?.versionCode !== undefined
+      ? String(Constants.expoConfig.android.versionCode)
+      : undefined) ??
+    (__DEV__ ? 'dev' : '1');
+
+  return {
+    release: `${slug}@${version}`,
+    dist: String(dist),
+  };
+}
+
+function shouldDropEvent(original: unknown): boolean {
+  if (isAxiosError(original)) {
+    const status = original.response?.status;
+    if (status === 401) return true;
+    if (original.code === 'ERR_CANCELED') return true;
+  }
+
+  if (original instanceof Error) {
+    const m = original.message;
+    if (m.includes('Session expired.') || m.includes('Request aborted')) return true;
+  }
+
+  return false;
+}
+
 export function initObservability(): void {
   if (hasInitAttempted) return;
   hasInitAttempted = true;
@@ -48,11 +84,23 @@ export function initObservability(): void {
   const sdk = loadSentry();
   if (!sdk?.init) return;
 
+  const versionTag = Constants.expoConfig?.version ?? 'unknown';
+  const { release, dist } = buildReleaseAndDist();
+
   sdk.init({
     dsn,
-    enableInExpoDevelopment: true,
+    enableInExpoDevelopment: process.env.EXPO_PUBLIC_SENTRY_DEV === 'true',
     debug: __DEV__,
+    release,
+    dist,
+    beforeSend(event: unknown, hint: { originalException?: unknown }) {
+      const ex = hint?.originalException;
+      if (ex !== undefined && shouldDropEvent(ex)) return null;
+      return event;
+    },
   });
+
+  sdk.Native?.setTag?.('app_version', versionTag);
 }
 
 export function addBreadcrumb(breadcrumb: Breadcrumb): void {
@@ -64,7 +112,6 @@ export function captureException(error: unknown, context?: Record<string, unknow
   const sdk = loadSentry();
   if (!sdk?.Native?.captureException) return;
 
-  // Sentry SDKs accept arbitrary hints; keep it lightweight and structured.
   sdk.Native.captureException(error, context ? { extra: context } : undefined);
 }
 
@@ -129,4 +176,3 @@ export function breadcrumbAuthFailure(input: {
     },
   });
 }
-

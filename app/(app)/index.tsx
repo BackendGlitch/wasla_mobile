@@ -17,7 +17,12 @@ import { buildBookingRouteMeta, formatCurrency, formatIssuedAt } from '../../src
 import { resolveCentralServerUrl } from '../../src/lib/serverConfig';
 import { toNetworkErrorInfo, toUserFacingErrorCopy } from '../../src/lib/networkErrors';
 import { appColors } from '../../src/theme/appTheme';
-import { useBookingStore, useStationStore, type StationWithDistance } from '../../src/store';
+import {
+  useBookingStore,
+  useConnectivityStore,
+  useStationStore,
+  type StationWithDistance,
+} from '../../src/store';
 
 const LAST_KNOWN_MAX_AGE_MS = 10 * 60 * 1000;
 const MAX_DISTANCE_KM = 999;
@@ -158,6 +163,7 @@ export default function MainScreen() {
     setLocationPermission,
   } = useStationStore();
   const tickets = useBookingStore((state) => state.tickets);
+  const reconnectEpoch = useConnectivityStore((s) => s.reconnectEpoch);
 
   const { data: routeOptions, isLoading: isLoadingRoutes, isError: isRouteError, refetch: refetchRoutes } = useQuery({
     queryKey: ['booking-routes', draftStation?.id],
@@ -455,6 +461,7 @@ export default function MainScreen() {
     setStations,
     serverUrl,
     stationRefreshTick,
+    reconnectEpoch,
     updateFromGpsCoords,
   ]);
 

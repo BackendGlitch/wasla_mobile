@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Slot, useRouter, useSegments } from 'expo-router';
+import { useRouter, useSegments } from 'expo-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TamaguiProvider } from 'tamagui';
-import { StatusBar } from 'expo-status-bar';
+import NetInfo, { type NetInfoState } from '@react-native-community/netinfo';
 import { useFonts, Sora_400Regular, Sora_500Medium, Sora_600SemiBold, Sora_700Bold } from '@expo-google-fonts/sora';
 import * as SplashScreen from 'expo-splash-screen';
 import * as SecureStore from 'expo-secure-store';
@@ -12,6 +12,8 @@ import { useAuthStore } from '../src/store';
 import { disconnectCentralRealtime, initCentralRealtime } from '../src/lib/realtime';
 import { readStoredToken, readStoredUser } from '../src/lib/sessionStorage';
 import { initObservability, setUser as setObservabilityUser } from '../src/lib/observability';
+import { useConnectivityStore } from '../src/store/connectivityStore';
+import { AppChrome } from './AppChrome';
 
 // Keep splash visible while we check auth
 SplashScreen.preventAutoHideAsync();
@@ -19,10 +21,13 @@ SplashScreen.preventAutoHideAsync();
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      retry: 2,
+      retry: 1,
       retryDelay: (attemptIndex) => Math.min(8_000, 500 * 2 ** attemptIndex),
       staleTime: 5_000,
       gcTime: 5 * 60 * 1000,
+    },
+    mutations: {
+      retry: 0,
     },
   },
 });
@@ -40,9 +45,22 @@ export default function RootLayout() {
     Sora_700Bold,
   });
 
-  // ── Bootstrap: check stored token + onboarding flag ──
   useEffect(() => {
-    (async () => {
+    initObservability();
+  }, []);
+
+  useEffect(() => {
+    const apply = (state: NetInfoState) => {
+      useConnectivityStore.getState().applyNetInfo(state);
+    };
+    const unsub = NetInfo.addEventListener(apply);
+    void NetInfo.fetch().then(apply);
+    return unsub;
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
       try {
         const [storedToken, storedUser, onboarded] = await Promise.all([
           readStoredToken(),
@@ -54,7 +72,11 @@ export default function RootLayout() {
           setToken(storedToken);
           setUser(storedUser);
           if (storedUser) {
-            setObservabilityUser({ id: storedUser.id, email: storedUser.email, username: storedUser.name });
+            setObservabilityUser({
+              id: storedUser.id,
+              email: storedUser.email,
+              username: storedUser.name,
+            });
           }
         }
         if (onboarded === 'true') {
@@ -63,12 +85,16 @@ export default function RootLayout() {
       } catch {
         // SecureStore may fail on web; ignore
       } finally {
-        setLoading(false);
-        initObservability();
-        setAppReady(true);
+        if (!cancelled) {
+          setLoading(false);
+          setAppReady(true);
+        }
       }
     })();
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [setLoading, setToken, setUser, setHasOnboarded]);
 
   useEffect(() => {
     if (appReady && fontsLoaded) {
@@ -76,7 +102,6 @@ export default function RootLayout() {
     }
   }, [appReady, fontsLoaded]);
 
-  // ── Route guard: redirect based on auth state ──
   useEffect(() => {
     if (isLoading || !appReady || !fontsLoaded) return;
 
@@ -85,17 +110,14 @@ export default function RootLayout() {
     const inOnboarding = segments[0] === '(onboarding)';
 
     if (!hasOnboarded) {
-      // Not onboarded → send to welcome
       if (!inOnboarding) {
         router.replace('/(onboarding)');
       }
     } else if (!token) {
-      // No token → auth
       if (!inAuthGroup) {
         router.replace('/(auth)');
       }
     } else {
-      // Authenticated → app, but allow OTP / email verification while token is already issued
       const finishingVerification =
         segments.includes('otp') || segments.includes('verify-email');
       if (!inAppGroup && !finishingVerification) {
@@ -119,8 +141,7 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <QueryClientProvider client={queryClient}>
         <TamaguiProvider config={tamaguiConfig} defaultTheme="dark">
-          <StatusBar style="light" />
-          <Slot />
+          <AppChrome />
         </TamaguiProvider>
       </QueryClientProvider>
     </GestureHandlerRootView>

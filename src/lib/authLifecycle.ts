@@ -1,46 +1,64 @@
 import { router } from 'expo-router';
 import { useAuthStore } from '../store/authStore';
+import { authApi } from './authApi';
 import { addBreadcrumb, setUser as setObservabilityUser } from './observability';
-import { clearStoredSession, readStoredToken } from './sessionStorage';
+import {
+  clearStoredSession,
+  deleteStoredRefreshToken,
+  persistStoredRefreshToken,
+  persistStoredToken,
+  readStoredRefreshToken,
+  readStoredToken,
+} from './sessionStorage';
+import { isTokenExpired } from './tokenExpiry';
 
 let logoutInFlight: Promise<void> | null = null;
 
-function decodeBase64Url(input: string): string | null {
-  const normalized = input.replace(/-/g, '+').replace(/_/g, '/');
-  const padding = normalized.length % 4 === 0 ? '' : '='.repeat(4 - (normalized.length % 4));
-  const base64 = normalized + padding;
-  try {
-    return globalThis.atob ? globalThis.atob(base64) : null;
-  } catch {
-    return null;
-  }
-}
+/** Serialized refresh attempts so concurrent 401s / expiry checks share one rotation. */
+let rotationRefreshPromise: Promise<boolean> | null = null;
 
-function getJwtExpiryMs(token: string): number | null {
-  const parts = token.split('.');
-  if (parts.length < 2) return null;
-  const payloadJson = decodeBase64Url(parts[1]);
-  if (!payloadJson) return null;
-  try {
-    const payload = JSON.parse(payloadJson) as { exp?: unknown };
-    const exp = payload.exp;
-    if (typeof exp !== 'number' || !Number.isFinite(exp)) return null;
-    return exp * 1000;
-  } catch {
-    return null;
-  }
-}
+export { isTokenExpired } from './tokenExpiry';
 
-export function isTokenExpired(token: string, skewSeconds = 30): boolean {
-  const expiryMs = getJwtExpiryMs(token);
-  if (!expiryMs) return false;
-  return Date.now() >= expiryMs - skewSeconds * 1000;
+/**
+ * Calls `POST /auth/refresh`, persists rotated tokens on success.
+ * Safe to invoke from multiple callers in parallel (single-flight).
+ */
+export async function tryRotationRefresh(): Promise<boolean> {
+  if (rotationRefreshPromise) return rotationRefreshPromise;
+
+  rotationRefreshPromise = (async () => {
+    const rt = await readStoredRefreshToken();
+    const trimmed = rt?.trim();
+    if (!trimmed) return false;
+    try {
+      const data = await authApi.exchangeRefreshToken(trimmed);
+      await persistStoredToken(data.access_token);
+      const nextRt = data.refresh_token?.trim();
+      if (nextRt) await persistStoredRefreshToken(nextRt);
+      else await deleteStoredRefreshToken();
+      useAuthStore.getState().setToken(data.access_token);
+      return true;
+    } catch {
+      return false;
+    }
+  })().finally(() => {
+    rotationRefreshPromise = null;
+  });
+
+  return rotationRefreshPromise;
 }
 
 export async function getValidStoredToken(): Promise<string | null> {
   const token = await readStoredToken();
   if (!token) return null;
   if (!isTokenExpired(token)) return token;
+
+  const rotated = await tryRotationRefresh();
+  if (rotated) {
+    const next = await readStoredToken();
+    return next ?? null;
+  }
+
   await forceLogout('token_expired');
   return null;
 }
@@ -69,4 +87,3 @@ export async function forceLogout(reason: string): Promise<void> {
 
   return logoutInFlight;
 }
-

@@ -2,6 +2,7 @@ import { io, type Socket } from 'socket.io-client';
 import { useRealtimeStore } from '../store/realtimeStore';
 import { useStationStore } from '../store/stationStore';
 import { resolveCentralServerUrl } from './serverConfig';
+import { captureException } from './observability';
 
 let centralSocket: Socket | null = null;
 let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
@@ -75,10 +76,16 @@ export const initCentralRealtime = (): Socket | null => {
     useRealtimeStore.setState({ status: 'disconnected' });
   });
 
-  socket.on('connect_error', (err) => {
+  socket.on('connect_error', (err: unknown) => {
+    const msg =
+      typeof err === 'object' && err !== null && 'message' in err
+        ? String((err as { message: unknown }).message)
+        : String(err ?? 'unknown');
+    const wrapped = err instanceof Error ? err : new Error(msg);
+    captureException(wrapped, { kind: 'realtime_connect_error', namespace: namespaceUrl });
     useRealtimeStore.setState({
       status: 'error',
-      lastError: err?.message ?? 'Unknown connection error',
+      lastError: msg !== 'unknown' ? msg : 'Unknown connection error',
     });
   });
 

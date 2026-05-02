@@ -8,13 +8,15 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "test:unit": "tsc -p tsconfig.unit.json && node --test test/*.test.cjs"
+    "test:unit": "tsc -p tsconfig.unit.json && node --test test/*.test.cjs",
+    "verify:maestro-ids": "node scripts/verify-maestro-testids.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/sora": "^0.2.3",
     "@expo/vector-icons": "^15.1.1",
     "@gorhom/bottom-sheet": "^5.2.8",
     "@hookform/resolvers": "^5.2.2",
+    "@react-native-community/netinfo": "^12.0.1",
     "@react-native-menu/menu": "^1.2.2",
     "@tamagui/config": "2.0.0-rc.14",
     "@tamagui/lucide-icons": "2.0.0-rc.14",

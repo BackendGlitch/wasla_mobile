@@ -1,6 +1,11 @@
 import type { Router } from 'expo-router';
 import { authApi, type AuthTokenResponse } from './authApi';
-import { persistStoredToken, persistStoredUser } from './sessionStorage';
+import {
+  deleteStoredRefreshToken,
+  persistStoredRefreshToken,
+  persistStoredToken,
+  persistStoredUser,
+} from './sessionStorage';
 import type { User } from '../store/authStore';
 import { addBreadcrumb, setUser as setObservabilityUser } from './observability';
 
@@ -62,6 +67,9 @@ export async function finishAuthAndNavigate(
   } = {},
 ): Promise<void> {
   await persistStoredToken(result.access_token);
+  const rt = result.refresh_token?.trim();
+  if (rt) await persistStoredRefreshToken(rt);
+  else await deleteStoredRefreshToken();
   setToken(result.access_token);
 
   const u = result.user;

@@ -2,6 +2,7 @@ import * as SecureStore from 'expo-secure-store';
 import type { User } from '../store/authStore';
 
 export const AUTH_TOKEN_KEY = 'auth_token';
+export const AUTH_REFRESH_TOKEN_KEY = 'auth_refresh_token';
 export const AUTH_USER_KEY = 'auth_user';
 
 export async function readStoredToken(): Promise<string | null> {
@@ -14,6 +15,22 @@ export async function persistStoredToken(token: string): Promise<void> {
 
 export async function deleteStoredToken(): Promise<void> {
   await SecureStore.deleteItemAsync(AUTH_TOKEN_KEY);
+}
+
+export async function readStoredRefreshToken(): Promise<string | null> {
+  return SecureStore.getItemAsync(AUTH_REFRESH_TOKEN_KEY);
+}
+
+export async function persistStoredRefreshToken(token: string): Promise<void> {
+  await SecureStore.setItemAsync(AUTH_REFRESH_TOKEN_KEY, token);
+}
+
+export async function deleteStoredRefreshToken(): Promise<void> {
+  try {
+    await SecureStore.deleteItemAsync(AUTH_REFRESH_TOKEN_KEY);
+  } catch {
+    // Key may already be absent
+  }
 }
 
 export async function readStoredUser(): Promise<User | null> {
@@ -49,6 +66,7 @@ export async function persistStoredUser(user: User): Promise<void> {
 export async function clearStoredSession(): Promise<void> {
   await Promise.all([
     SecureStore.deleteItemAsync(AUTH_TOKEN_KEY),
+    SecureStore.deleteItemAsync(AUTH_REFRESH_TOKEN_KEY),
     SecureStore.deleteItemAsync(AUTH_USER_KEY),
   ]);
 }

@@ -10,6 +10,9 @@
     "rootDir": "src",
     "outDir": "dist-unit"
   },
-  "include": ["src/lib/serverConfigCore.ts"]
+  "include": [
+    "src/lib/serverConfigCore.ts",
+    "src/lib/networkErrors.ts",
+    "src/lib/tokenExpiry.ts"
+  ]
 }
-

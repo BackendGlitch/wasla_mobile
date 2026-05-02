@@ -1,18 +1,27 @@
-import axios from 'axios';
-import { AUTH_TOKEN_KEY } from './sessionStorage';
-import * as SecureStore from 'expo-secure-store';
+import axios, { isAxiosError } from 'axios';
+import type { InternalAxiosRequestConfig } from 'axios';
 import { resolveCentralServerUrl } from './serverConfig';
 import { attachAxiosRetry } from './httpRetry';
-import { breadcrumbAuthFailure, breadcrumbCentralBaseUrlResolution, captureException } from './observability';
-import { forceLogout, isTokenExpired } from './authLifecycle';
+import {
+  breadcrumbAuthFailure,
+  breadcrumbCentralBaseUrlResolution,
+  captureException,
+} from './observability';
+import { forceLogout, getValidStoredToken, tryRotationRefresh } from './authLifecycle';
+import { readStoredToken } from './sessionStorage';
 
-// ─── Axios Instance ──────────────────────────────────────────
+type AuthorizedRequestConfig = InternalAxiosRequestConfig & {
+  __waslaRetryAfterRefresh?: boolean;
+};
+
+// ─── Axios Instance ────────────────────────────
 const api = axios.create({
   baseURL: resolveCentralServerUrl().url ?? undefined,
   timeout: 10000,
   headers: { 'Content-Type': 'application/json' },
 });
 
+// Retry idempotent reads (GET default). Mutations pass `__waslaMaxRetries: 0` on the config.
 attachAxiosRetry(api, { maxRetries: 2 });
 
 // Request interceptor — inject Bearer token
@@ -26,35 +35,57 @@ api.interceptors.request.use(async (config) => {
   config.baseURL = resolved.url;
   breadcrumbCentralBaseUrlResolution(resolved);
 
-  const token = await SecureStore.getItemAsync(AUTH_TOKEN_KEY);
-  if (token && isTokenExpired(token)) {
-    await forceLogout('token_expired');
-    return Promise.reject(new Error('Session expired.'));
+  const token = await getValidStoredToken();
+  if (!token) {
+    return config;
   }
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
+  config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 
-// Response interceptor — on 401 clear token & redirect
+// Response interceptor
 api.interceptors.response.use(
   (response) => response,
-  async (error) => {
-    if (error.response?.status === 401) {
+  async (error: unknown) => {
+    if (!isAxiosError(error)) {
+      return Promise.reject(error);
+    }
+
+    const cfg = error.config as AuthorizedRequestConfig | undefined;
+    const status = error.response?.status;
+
+    if (status === 401 && cfg && !cfg.__waslaRetryAfterRefresh) {
+      const rotated = await tryRotationRefresh();
+      if (rotated) {
+        const token = await readStoredToken();
+        if (token) {
+          cfg.__waslaRetryAfterRefresh = true;
+          cfg.headers = cfg.headers ?? {};
+          cfg.headers.Authorization = `Bearer ${token}`;
+          return api.request(cfg);
+        }
+      }
+    }
+
+    if (status === 401) {
       breadcrumbAuthFailure({
         status: 401,
         method: error.config?.method,
         url: error.config?.url,
         baseURL: error.config?.baseURL,
       });
-      captureException(error, {
-        kind: 'auth_failure',
-        status: 401,
-        url: String(error.config?.url ?? ''),
-      });
       await forceLogout('unauthorized');
     }
+
+    if (typeof status === 'number' && status >= 500) {
+      captureException(error, {
+        kind: 'http_server_error',
+        status,
+        url: String(error.config?.url ?? ''),
+        method: String(error.config?.method ?? ''),
+      });
+    }
+
     return Promise.reject(error);
   },
 );

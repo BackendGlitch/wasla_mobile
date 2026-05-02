@@ -4,6 +4,7 @@ type RetryableMethod = 'get' | 'head' | 'options';
 
 type RetryConfig = AxiosRequestConfig & {
   __waslaRetryCount?: number;
+  __waslaMaxRetries?: number;
 };
 
 type AbortSignalLike = {
@@ -94,7 +95,11 @@ export function attachAxiosRetry(
       if (!config) return Promise.reject(error);
 
       const retryCount = config.__waslaRetryCount ?? 0;
-      if (retryCount >= resolvedOptions.maxRetries) return Promise.reject(error);
+      const maxForRequest =
+        typeof config.__waslaMaxRetries === 'number'
+          ? config.__waslaMaxRetries
+          : resolvedOptions.maxRetries;
+      if (retryCount >= maxForRequest) return Promise.reject(error);
 
       if (!shouldRetry(axiosError, config)) return Promise.reject(error);
 

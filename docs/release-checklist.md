@@ -5,14 +5,15 @@
 - `EXPO_PUBLIC_CENTRAL_SERVER_URL` is set to an absolute `http(s)` URL.
   - Android emulator + dev: `http://localhost:PORT` should resolve to `http://10.0.2.2:PORT`.
   - iOS simulator + dev: `http://10.0.2.2:PORT` should resolve back to `http://localhost:PORT`.
-- If using Sentry, `EXPO_PUBLIC_SENTRY_DSN` is set (see `docs/observability.md`).
-- iOS + HTTP dev servers: confirm ATS config matches your needs (`app.json` `ios.infoPlist.NSAppTransportSecurity`).
+- If using Sentry, `EXPO_PUBLIC_SENTRY_DSN` is set (see `docs/observability.md`). Optional dev uploads: `EXPO_PUBLIC_SENTRY_DEV=true`.
+- iOS + **HTTP dev** servers: set `EXPO_PUBLIC_ALLOW_INSECURE_HTTP=true` so `app.config.js` merges `NSAllowsArbitraryLoads`. Production builds should use HTTPS and leave this unset.
+- Auth/session model is documented in `docs/auth-sessions.md` (no refresh API yet).
 
 ## Smoke tests
 
-- Unit tests (server URL resolution):
-  - `node node_modules/typescript/bin/tsc -p tsconfig.unit.json`
-  - `node --test test/*.test.cjs`
+- Unit tests + Maestro-ID drift check:
+  - `pnpm run test:unit`
+  - `pnpm run verify:maestro-ids`
 - E2E (Maestro): login → stations → booking:
   - Set env vars `WASLA_TEST_EMAIL` and `WASLA_TEST_PASSWORD` for a test account.
   - Run `maestro test .maestro/smoke_login_booking.yaml`

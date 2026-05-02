@@ -15,6 +15,10 @@ type CentralUser = {
 
 export type AuthTokenResponse = {
   access_token: string;
+  /** Opaque refresh token; rotate on each `/auth/refresh` call. */
+  refresh_token?: string;
+  /** Access JWT lifetime in seconds (when the server sends it). */
+  expires_in?: number;
   user: CentralUser;
 };
 
@@ -85,6 +89,12 @@ export const authApi = {
 
   verifyOtp: async (body: { phone?: string; email?: string; otp: string }) => {
     const res = await centralApi.post('/auth/verify-otp', body);
+    return res.data as AuthTokenResponse;
+  },
+
+  /** Exchange refresh for a new access + refresh pair (server rotates refresh). */
+  exchangeRefreshToken: async (refresh_token: string) => {
+    const res = await centralApi.post('/auth/refresh', { refresh_token });
     return res.data as AuthTokenResponse;
   },
 
