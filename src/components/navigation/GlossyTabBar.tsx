@@ -4,6 +4,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { BlurView } from 'expo-blur';
+import { useRealtimeStore } from '../../store';
 
 type TabConfig = {
   key: string;
@@ -35,6 +36,20 @@ export default function GlossyTabBar({ state, navigation }: BottomTabBarProps) {
   const bottomOffset = Math.max(18, insets.bottom + 8);
   const activeRouteName = state.routes[state.index]?.name;
   const shouldShowBar = tabs.some((tab) => tab.key === activeRouteName);
+  const realtimeStatus = useRealtimeStore((s) => s.status);
+
+  const liveLabel =
+    realtimeStatus === 'connected'
+      ? 'Live'
+      : realtimeStatus === 'connecting'
+        ? 'Connecting'
+        : 'Disconnected';
+  const liveDot =
+    realtimeStatus === 'connected'
+      ? '#2EE59D'
+      : realtimeStatus === 'connecting'
+        ? 'rgba(255, 204, 102, 0.95)'
+        : 'rgba(255, 111, 111, 0.95)';
 
   if (!shouldShowBar) return null;
 
@@ -43,6 +58,12 @@ export default function GlossyTabBar({ state, navigation }: BottomTabBarProps) {
       <View style={styles.barShell}>
         <BlurView intensity={32} tint="dark" style={styles.blurLayer} pointerEvents="none" />
         <View style={styles.bottomShade} pointerEvents="none" />
+        <View style={styles.liveWrap} pointerEvents="none">
+          <View style={[styles.liveDot, { backgroundColor: liveDot }]} />
+          <Text fontSize="$1" fontWeight="800" style={styles.liveText}>
+            {liveLabel}
+          </Text>
+        </View>
 
         <XStack style={styles.row}>
           {tabs.map((tab) => {
@@ -108,6 +129,29 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 14 },
     elevation: 24,
     overflow: 'hidden',
+  },
+  liveWrap: {
+    position: 'absolute',
+    top: 8,
+    right: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: 'rgba(0,0,0,0.22)',
+  },
+  liveDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 999,
+  },
+  liveText: {
+    color: 'rgba(255,255,255,0.82)',
+    letterSpacing: 0.3,
   },
   blurLayer: {
     ...StyleSheet.absoluteFillObject,

@@ -1,0 +1,39 @@
+# Intended for a repository whose root is this app. If the mobile app lives in `wasla_mobile/`
+# inside a parent repo, either move this workflow to the parent `.github/` and set
+# `defaults.run.working-directory: wasla_mobile` on jobs, or duplicate the run steps there.
+name: Wasla Mobile CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit-and-smoke-metadata:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      # If mobile lives in `wasla_mobile/` inside a parent repo, set `working-directory` on each run step instead.
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm run test:unit
+
+      - run: pnpm run verify:maestro-ids

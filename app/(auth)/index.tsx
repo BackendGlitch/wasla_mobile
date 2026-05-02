@@ -78,6 +78,7 @@ export default function AuthWelcomeScreen() {
 
               <Pressable
                 onPress={() => router.push('/(auth)/sign-in')}
+                testID="auth-welcome-signin"
                 style={({ pressed }) => ({
                   paddingVertical: 16,
                   paddingHorizontal: 20,

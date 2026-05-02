@@ -1,7 +1,13 @@
 import type { Router } from 'expo-router';
 import { authApi, type AuthTokenResponse } from './authApi';
-import { persistStoredToken, persistStoredUser } from './sessionStorage';
+import {
+  deleteStoredRefreshToken,
+  persistStoredRefreshToken,
+  persistStoredToken,
+  persistStoredUser,
+} from './sessionStorage';
 import type { User } from '../store/authStore';
+import { addBreadcrumb, setUser as setObservabilityUser } from './observability';
 
 /** Expo Router can mishandle `@` in path/query params — encode when passing, decode when reading. */
 export function encodeAuthRouteParam(value: string): string {
@@ -61,6 +67,9 @@ export async function finishAuthAndNavigate(
   } = {},
 ): Promise<void> {
   await persistStoredToken(result.access_token);
+  const rt = result.refresh_token?.trim();
+  if (rt) await persistStoredRefreshToken(rt);
+  else await deleteStoredRefreshToken();
   setToken(result.access_token);
 
   const u = result.user;
@@ -77,6 +86,13 @@ export async function finishAuthAndNavigate(
   const storeUser = buildStoreUser(result, emailNorm || u.email || '', phoneE164 || u.phone || '');
   await persistStoredUser(storeUser);
   setUser(storeUser);
+  setObservabilityUser({ id: storeUser.id, email: storeUser.email, username: storeUser.name });
+  addBreadcrumb({
+    category: 'auth',
+    level: 'info',
+    message: 'Signed in',
+    data: { userId: storeUser.id },
+  });
 
   if (emailNorm && !isVerified(u.emailVerified)) {
     try {

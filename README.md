@@ -67,3 +67,13 @@ Note for interns:
 - Physical device: replace with the dev machine LAN IP (or use an Expo tunnel), because `localhost` points to the phone itself.
 
 Connection state is available via `useRealtimeStore` (`status`, `lastReadyAt`, `lastPongAt`, `lastPong`, `lastError`).
+
+## Tests / Release
+
+- `pnpm run test:unit` — compiles [`tsconfig.unit.json`](tsconfig.unit.json) helpers and runs `node --test test/*.test.cjs`.
+- `pnpm run verify:maestro-ids` — ensures `.maestro/smoke_login_booking.yaml` still matches `testID`s in source (CI-friendly guard).
+- CI: [.github/workflows/mobile-ci.yml](.github/workflows/mobile-ci.yml) runs those on `main`.
+- Sessions (no refresh API yet): [docs/auth-sessions.md](docs/auth-sessions.md).
+- iOS HTTP in dev only: `EXPO_PUBLIC_ALLOW_INSECURE_HTTP=true` (see [app.config.js](app.config.js)); prefer HTTPS otherwise.
+- E2E smoke (Maestro device): [.maestro/smoke_login_booking.yaml](.maestro/smoke_login_booking.yaml) + [docs/release-checklist.md](docs/release-checklist.md).
+- Sentry (optional): [docs/observability.md](docs/observability.md).

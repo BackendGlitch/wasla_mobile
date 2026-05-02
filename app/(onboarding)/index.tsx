@@ -152,7 +152,7 @@ export default function OnboardingScreen() {
             </Text>
           </XStack>
           {!isLast && (
-            <Button chromeless onPress={completeOnboarding} color={authColors.textSecondary}>
+            <Button chromeless onPress={completeOnboarding} color={authColors.textSecondary} testID="onboarding-skip">
               Skip
             </Button>
           )}

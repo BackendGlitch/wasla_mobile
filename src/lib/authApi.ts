@@ -1,5 +1,7 @@
 import axios, { isAxiosError } from 'axios';
 import { resolveCentralServerUrl } from './serverConfig';
+import { attachAxiosRetry } from './httpRetry';
+import { breadcrumbCentralBaseUrlResolution } from './observability';
 
 type CentralUser = {
   id: string;
@@ -13,6 +15,10 @@ type CentralUser = {
 
 export type AuthTokenResponse = {
   access_token: string;
+  /** Opaque refresh token; rotate on each `/auth/refresh` call. */
+  refresh_token?: string;
+  /** Access JWT lifetime in seconds (when the server sends it). */
+  expires_in?: number;
   user: CentralUser;
 };
 
@@ -30,13 +36,17 @@ const centralApi = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
+attachAxiosRetry(centralApi, { maxRetries: 1 });
+
 centralApi.interceptors.request.use((config) => {
   const resolved = resolveCentralServerUrl();
   if (!resolved.url) {
+    breadcrumbCentralBaseUrlResolution(resolved);
     return Promise.reject(new Error(resolved.error ?? 'Central server URL is not configured.'));
   }
 
   config.baseURL = resolved.url;
+  breadcrumbCentralBaseUrlResolution(resolved);
   return config;
 });
 
@@ -79,6 +89,12 @@ export const authApi = {
 
   verifyOtp: async (body: { phone?: string; email?: string; otp: string }) => {
     const res = await centralApi.post('/auth/verify-otp', body);
+    return res.data as AuthTokenResponse;
+  },
+
+  /** Exchange refresh for a new access + refresh pair (server rotates refresh). */
+  exchangeRefreshToken: async (refresh_token: string) => {
+    const res = await centralApi.post('/auth/refresh', { refresh_token });
     return res.data as AuthTokenResponse;
   },
 

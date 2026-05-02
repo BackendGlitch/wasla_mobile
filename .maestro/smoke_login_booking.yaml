@@ -1,0 +1,53 @@
+appId: com.backendglitch.wasla
+---
+- launchApp
+
+# On a fresh install, onboarding may appear.
+- tapOn:
+    id: onboarding-skip
+    optional: true
+
+- tapOn:
+    id: auth-welcome-signin
+
+- tapOn:
+    id: signin-mode-email
+
+- tapOn:
+    id: signin-email
+- inputText: ${WASLA_TEST_EMAIL}
+
+- tapOn:
+    id: signin-password
+- inputText: ${WASLA_TEST_PASSWORD}
+
+- tapOn:
+    id: signin-submit
+
+- waitForVisible:
+    id: start-booking
+    timeout: 60000
+
+- tapOn:
+    id: start-booking
+
+- waitForVisible:
+    idRegex: "station-option-.*"
+    timeout: 30000
+- tapOn:
+    idRegex: "station-option-.*"
+
+- tapOn:
+    id: station-next
+
+- waitForVisible:
+    idRegex: "route-option-.*"
+    timeout: 30000
+- tapOn:
+    idRegex: "route-option-.*"
+
+- tapOn:
+    id: route-next
+
+- assertVisible: "How many seats will you book?"
+

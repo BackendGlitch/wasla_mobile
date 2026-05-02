@@ -1,27 +1,19 @@
 import { Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
 import { YStack, XStack, Text, ScrollView } from 'tamagui';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/store';
-import { clearStoredSession } from '../../src/lib';
+import { forceLogout } from '../../src/lib';
 import { appColors } from '../../src/theme/appTheme';
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
-  const router = useRouter();
-  const { user, logout } = useAuthStore();
+  const { user } = useAuthStore();
 
   const bottomPad = Math.max(24, insets.bottom + 96);
 
   const handleLogout = async () => {
-    try {
-      await clearStoredSession();
-    } catch {
-      // SecureStore may fail on web; continue
-    }
-    logout();
-    router.replace('/(auth)');
+    await forceLogout('user_initiated');
   };
 
   const displayName = user?.name?.trim() || 'Account';

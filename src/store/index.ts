@@ -5,3 +5,4 @@ export type { StationWithDistance } from './stationStore';
 export { useRealtimeStore } from './realtimeStore';
 export { useBookingStore } from './bookingStore';
 export type { BookingDraft, TicketRecord } from './bookingStore';
+export { useConnectivityStore } from './connectivityStore';

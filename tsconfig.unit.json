@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "lib": ["ES2022", "DOM"],
+    "moduleResolution": "Node",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "rootDir": "src",
+    "outDir": "dist-unit"
+  },
+  "include": [
+    "src/lib/serverConfigCore.ts",
+    "src/lib/networkErrors.ts",
+    "src/lib/tokenExpiry.ts"
+  ]
+}

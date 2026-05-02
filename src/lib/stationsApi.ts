@@ -44,13 +44,16 @@ function normalizeStationDetails(raw: unknown): StationDetails {
   };
 }
 
-export async function getStations(): Promise<Station[]> {
-  const response = await api.get('/stations');
+export async function getStations(options?: { signal?: AbortSignal }): Promise<Station[]> {
+  const response = await api.get('/stations', { signal: options?.signal });
   if (!Array.isArray(response.data)) return [];
   return response.data.map(normalizeStation).filter((station) => station.id);
 }
 
-export async function getStation(stationId: string): Promise<StationDetails> {
-  const response = await api.get(`/stations/${stationId}`);
+export async function getStation(
+  stationId: string,
+  options?: { signal?: AbortSignal },
+): Promise<StationDetails> {
+  const response = await api.get(`/stations/${stationId}`, { signal: options?.signal });
   return normalizeStationDetails(response.data);
 }
