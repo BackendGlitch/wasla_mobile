@@ -3,8 +3,6 @@ import { XStack, Text } from 'tamagui';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { BlurView } from 'expo-blur';
-import { useRealtimeStore } from '../../store';
 
 type TabConfig = {
   key: string;
@@ -14,12 +12,11 @@ type TabConfig = {
 };
 
 const tabs: TabConfig[] = [
-  { key: 'index', label: 'Main', icon: 'home-variant-outline', activeIcon: 'home-variant' },
-  { key: 'history', label: 'History', icon: 'history' },
-  { key: 'settings', label: 'Settings', icon: 'cog-outline', activeIcon: 'cog' },
+  { key: 'index', label: 'Main', icon: 'view-dashboard-outline', activeIcon: 'view-dashboard' },
+  { key: 'history', label: 'History', icon: 'clipboard-text-clock-outline', activeIcon: 'clipboard-text-clock' },
+  { key: 'settings', label: 'Settings', icon: 'tune-variant', activeIcon: 'tune-variant' },
 ];
 
-/** Custom tab bars don’t receive a wrapper View with `tabBarStyle`; mirror RN’s semantics so `setOptions({ tabBarStyle })` hides the bar. */
 function isTabBarStyleHidden(style: StyleProp<ViewStyle> | undefined): boolean {
   const flat = style != null ? StyleSheet.flatten(style) : undefined;
   if (!flat) return false;
@@ -29,207 +26,241 @@ function isTabBarStyleHidden(style: StyleProp<ViewStyle> | undefined): boolean {
   return false;
 }
 
-const colors = {
-  bar: 'rgba(14, 16, 22, 0.5)',
-  barBorder: 'rgba(255,255,255,0.08)',
-  inactive: '#A5AFBF',
-  activeText: '#0E1118',
-  activePill: 'rgba(255,255,255,0.92)',
-  activePillBorder: 'rgba(255,255,255,0.7)',
-  activePillInner: 'rgba(255,255,255,0.4)',
-  activePillSheen: 'rgba(255,255,255,0.85)',
-  shadow: 'rgba(0,0,0,0.5)',
+const c = {
+  frame: '#0C0B0A',
+  frameInset: '#161210',
+  brass: '#C97B3F',
+  brassDim: 'rgba(201, 123, 63, 0.35)',
+  amberLine: 'rgba(232, 168, 108, 0.55)',
+  textIdle: '#8E7760',
+  textIdleMuted: '#5C5044',
+  ink: '#140E0B',
+  activeFill: '#D87A38',
+  activeBorder: '#EEB47A',
+  rivet: 'rgba(232, 180, 122, 0.45)',
 };
 
 export default function GlossyTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
-  const bottomOffset = Math.max(18, insets.bottom + 8);
+  const bottomPad = Math.max(10, insets.bottom + 6);
   const activeRouteName = state.routes[state.index]?.name;
   const shouldShowBar = tabs.some((tab) => tab.key === activeRouteName);
   const focusedRoute = state.routes[state.index];
-  const focusedTabBarStyle = focusedRoute
-    ? descriptors[focusedRoute.key]?.options.tabBarStyle
-    : undefined;
-  const realtimeStatus = useRealtimeStore((s) => s.status);
-
-  const liveLabel =
-    realtimeStatus === 'connected'
-      ? 'Live'
-      : realtimeStatus === 'connecting'
-        ? 'Connecting'
-        : 'Disconnected';
-  const liveDot =
-    realtimeStatus === 'connected'
-      ? '#2EE59D'
-      : realtimeStatus === 'connecting'
-        ? 'rgba(255, 204, 102, 0.95)'
-        : 'rgba(255, 111, 111, 0.95)';
+  const focusedTabBarStyle = focusedRoute ? descriptors[focusedRoute.key]?.options.tabBarStyle : undefined;
 
   if (!shouldShowBar) return null;
-
   if (isTabBarStyleHidden(focusedTabBarStyle as StyleProp<ViewStyle>)) return null;
 
   return (
-    <View style={[styles.container, { bottom: bottomOffset }]} pointerEvents="box-none">
-      <View style={styles.barShell}>
-        <BlurView intensity={32} tint="dark" style={styles.blurLayer} pointerEvents="none" />
-        <View style={styles.bottomShade} pointerEvents="none" />
-        <XStack style={styles.row}>
-          {tabs.map((tab) => {
-            const routeIndex = state.routes.findIndex((r) => r.name === tab.key);
-            const route = state.routes[routeIndex];
-            if (!route) return null;
+    <View style={[styles.container, { paddingBottom: bottomPad }]} pointerEvents="box-none">
+      <View style={styles.outerChrome}>
+        <View style={styles.rivetTL} pointerEvents="none" />
+        <View style={styles.rivetTR} pointerEvents="none" />
+        <View style={styles.chromeTopRule} pointerEvents="none" />
 
-            const isFocused = state.index === routeIndex;
-            const onPress = () => {
-              const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
-              if (!isFocused && !event.defaultPrevented) {
-                navigation.navigate(route.name);
-              }
-            };
+        <View style={styles.headerStrip}>
+          <Text style={styles.headerLabel}>MENU</Text>
+          <Text style={styles.headerSub}>WASLA</Text>
+        </View>
 
-            const onLongPress = () => {
-              navigation.emit({ type: 'tabLongPress', target: route.key });
-            };
+        <View style={styles.innerWell}>
+          <XStack style={styles.segmentRow}>
+            {tabs.map((tab, index) => {
+              const routeIndex = state.routes.findIndex((r) => r.name === tab.key);
+              const route = state.routes[routeIndex];
+              if (!route) return null;
 
-            return (
-              <Pressable key={tab.key} onPress={onPress} onLongPress={onLongPress} style={styles.pressable}>
-                <View style={[styles.item, !isFocused && styles.itemInactive, isFocused && styles.itemActive]}>
-                  {isFocused ? <View style={styles.activeSheen} pointerEvents="none" /> : null}
-                  {isFocused ? <View style={styles.activeInnerStroke} pointerEvents="none" /> : null}
-                  <MaterialCommunityIcons
-                    name={isFocused && tab.activeIcon ? tab.activeIcon : tab.icon}
-                    size={18}
-                    color={isFocused ? colors.activeText : colors.inactive}
-                  />
-                  {isFocused ? (
-                    <Text fontSize="$2" fontWeight="700" style={{ color: colors.activeText }}>
-                      {tab.label}
+              const isFocused = state.index === routeIndex;
+
+              const onPress = () => {
+                const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
+                if (!isFocused && !event.defaultPrevented) {
+                  navigation.navigate(route.name);
+                }
+              };
+
+              const onLongPress = () => {
+                navigation.emit({ type: 'tabLongPress', target: route.key });
+              };
+
+              return (
+                <View key={tab.key} style={styles.cellWrap}>
+                  {index > 0 ? <View style={styles.verticalRule} /> : null}
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: isFocused }}
+                    accessibilityLabel={tab.label}
+                    onPress={onPress}
+                    onLongPress={onLongPress}
+                    style={({ pressed }) => [
+                      styles.cell,
+                      isFocused ? styles.cellActive : null,
+                      pressed ? styles.cellPressed : null,
+                    ]}
+                  >
+                    {isFocused ? <View style={styles.activeGlowLine} pointerEvents="none" /> : null}
+                    <MaterialCommunityIcons
+                      name={isFocused && tab.activeIcon ? tab.activeIcon : tab.icon}
+                      size={20}
+                      color={isFocused ? c.ink : c.textIdle}
+                    />
+                    <Text
+                      fontSize="$1"
+                      fontWeight="800"
+                      letterSpacing={1.4}
+                      style={{ color: isFocused ? c.ink : c.textIdleMuted }}
+                    >
+                      {tab.label.toUpperCase()}
                     </Text>
-                  ) : null}
+                  </Pressable>
                 </View>
-              </Pressable>
-            );
-          })}
-        </XStack>
+              );
+            })}
+          </XStack>
+        </View>
+
+        <View style={styles.chromeBottomRule} pointerEvents="none" />
+        <View style={styles.rivetBL} pointerEvents="none" />
+        <View style={styles.rivetBR} pointerEvents="none" />
       </View>
     </View>
   );
 }
+
+const rivetCommon = {
+  position: 'absolute' as const,
+  width: 5,
+  height: 5,
+  borderRadius: 1,
+  backgroundColor: c.rivet,
+  borderWidth: StyleSheet.hairlineWidth,
+  borderColor: c.brassDim,
+};
 
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
     left: 0,
     right: 0,
-    alignItems: 'center',
-  },
-  barShell: {
-    position: 'relative',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 999,
-    backgroundColor: colors.bar,
-    borderWidth: 1,
-    borderColor: colors.barBorder,
-    shadowColor: colors.shadow,
-    shadowOpacity: 0.7,
-    shadowRadius: 22,
-    shadowOffset: { width: 0, height: 14 },
-    elevation: 24,
-    overflow: 'hidden',
-  },
-  liveWrap: {
-    position: 'absolute',
-    top: 8,
-    right: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    backgroundColor: 'rgba(0,0,0,0.22)',
-  },
-  liveDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 999,
-  },
-  liveText: {
-    color: 'rgba(255,255,255,0.82)',
-    letterSpacing: 0.3,
-  },
-  blurLayer: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: 999,
-  },
-  bottomShade: {
-    position: 'absolute',
-    bottom: 2,
-    left: 12,
-    right: 12,
-    height: 8,
-    borderRadius: 999,
-    backgroundColor: 'rgba(0,0,0,0.25)',
-    opacity: 0.5,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 6,
-  },
-  pressable: {
-    borderRadius: 999,
-  },
-  item: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+    bottom: 0,
+    alignItems: 'stretch',
     paddingHorizontal: 16,
-    paddingVertical: 9,
-    borderRadius: 999,
   },
-  itemInactive: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    opacity: 0.8,
-    minWidth: 44,
-    justifyContent: 'center',
+  outerChrome: {
+    position: 'relative',
+    borderRadius: 8,
+    backgroundColor: c.frame,
+    borderWidth: 2,
+    borderColor: c.brassDim,
+    paddingTop: 2,
+    paddingBottom: 4,
+    paddingHorizontal: 3,
+    shadowColor: '#000',
+    shadowOpacity: 0.55,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 20,
+    overflow: 'visible',
   },
-  itemActive: {
-    backgroundColor: colors.activePill,
+  rivetTL: { ...rivetCommon, top: -2, left: 10 },
+  rivetTR: { ...rivetCommon, top: -2, right: 10 },
+  rivetBL: { ...rivetCommon, bottom: -2, left: 10 },
+  rivetBR: { ...rivetCommon, bottom: -2, right: 10 },
+  chromeTopRule: {
+    position: 'absolute',
+    top: 6,
+    left: 22,
+    right: 22,
+    height: 1,
+    backgroundColor: c.amberLine,
+    opacity: 0.85,
+  },
+  chromeBottomRule: {
+    position: 'absolute',
+    bottom: 8,
+    left: 22,
+    right: 22,
+    height: 1,
+    backgroundColor: c.amberLine,
+    opacity: 0.35,
+  },
+  headerStrip: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    paddingBottom: 6,
+  },
+  headerLabel: {
+    color: c.brass,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 2.4,
+  },
+  headerSub: {
+    color: c.textIdleMuted,
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 1.8,
+  },
+  innerWell: {
+    marginHorizontal: 6,
+    borderRadius: 4,
+    backgroundColor: c.frameInset,
     borderWidth: 1,
-    borderColor: colors.activePillBorder,
+    borderColor: 'rgba(40, 32, 26, 0.95)',
     overflow: 'hidden',
-    shadowColor: 'rgba(255,255,255,0.28)',
-    shadowOpacity: 0.6,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 7 },
-    elevation: 10,
-    minWidth: 96,
+  },
+  segmentRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    minHeight: 58,
+  },
+  cellWrap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'stretch',
+  },
+  verticalRule: {
+    width: StyleSheet.hairlineWidth + 1,
+    backgroundColor: c.brassDim,
+    opacity: 0.9,
+    marginVertical: 8,
+    alignSelf: 'stretch',
+  },
+  cell: {
+    flex: 1,
+    alignItems: 'center',
     justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    borderRadius: 2,
+    marginVertical: 4,
+    marginHorizontal: 2,
   },
-  activeSheen: {
-    position: 'absolute',
-    top: 4,
-    left: 12,
-    right: 12,
-    height: 3,
-    borderRadius: 999,
-    backgroundColor: colors.activePillSheen,
-  },
-  activeInnerStroke: {
-    position: 'absolute',
-    top: 3,
-    left: 6,
-    right: 6,
-    bottom: 3,
-    borderRadius: 999,
+  cellActive: {
+    backgroundColor: c.activeFill,
     borderWidth: 1,
-    borderColor: colors.activePillInner,
+    borderColor: c.activeBorder,
+    shadowColor: c.activeFill,
+    shadowOpacity: 0.55,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 6,
+  },
+  cellPressed: {
+    opacity: 0.88,
+    transform: [{ scale: 0.985 }],
+  },
+  activeGlowLine: {
+    position: 'absolute',
+    top: 5,
+    left: '14%',
+    right: '14%',
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: 'rgba(255, 234, 210, 0.55)',
   },
 });

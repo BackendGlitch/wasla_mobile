@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { YStack, XStack, Text, ScrollView } from 'tamagui';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -41,6 +41,7 @@ export default function SettingsScreen() {
         }
         showsVerticalScrollIndicator={false}
       >
+        <View style={styles.screenGlow} pointerEvents="none" />
         <Pressable onPress={navigateBack} style={[styles.backButton, { marginBottom: 14 }]}>
           <XStack items="center" gap="$2">
             <MaterialCommunityIcons name="arrow-left" size={20} color={appColors.textPrimary} />
@@ -164,11 +165,21 @@ export default function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
+  screenGlow: {
+    position: 'absolute',
+    top: -60,
+    right: -28,
+    width: 220,
+    height: 220,
+    borderRadius: 999,
+    backgroundColor: appColors.accentGlowSoft,
+    opacity: 0.28,
+  },
   backButton: {
     alignSelf: 'flex-start',
     paddingVertical: 10,
     paddingHorizontal: 14,
-    borderRadius: 999,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: appColors.borderStrong,
     backgroundColor: appColors.surfaceStrong,

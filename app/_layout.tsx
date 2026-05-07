@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { Animated } from 'react-native';
 import { useRouter, useSegments } from 'expo-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TamaguiProvider } from 'tamagui';
@@ -13,6 +14,7 @@ import { disconnectCentralRealtime, initCentralRealtime } from '../src/lib/realt
 import { readStoredToken, readStoredUser } from '../src/lib/sessionStorage';
 import { initObservability, setUser as setObservabilityUser } from '../src/lib/observability';
 import { useConnectivityStore } from '../src/store/connectivityStore';
+import { SplashBootstrapLayer } from '../src/components/splash/SplashBootstrapLayer';
 import { AppChrome } from './AppChrome';
 
 // Keep splash visible while we check auth
@@ -44,6 +46,10 @@ export default function RootLayout() {
     Sora_600SemiBold,
     Sora_700Bold,
   });
+
+  const bootstrapDone = appReady && fontsLoaded;
+  const splashFade = useRef(new Animated.Value(1)).current;
+  const [splashLayerMounted, setSplashLayerMounted] = useState(true);
 
   useEffect(() => {
     initObservability();
@@ -97,10 +103,22 @@ export default function RootLayout() {
   }, [setLoading, setToken, setUser, setHasOnboarded]);
 
   useEffect(() => {
-    if (appReady && fontsLoaded) {
-      SplashScreen.hideAsync();
-    }
-  }, [appReady, fontsLoaded]);
+    if (!bootstrapDone) return;
+    let cancelled = false;
+    void SplashScreen.hideAsync().then(() => {
+      if (cancelled) return;
+      Animated.timing(splashFade, {
+        toValue: 0,
+        duration: 420,
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (finished && !cancelled) setSplashLayerMounted(false);
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [bootstrapDone, splashFade]);
 
   useEffect(() => {
     if (isLoading || !appReady || !fontsLoaded) return;
@@ -135,13 +153,17 @@ export default function RootLayout() {
     };
   }, [appReady, fontsLoaded]);
 
-  if (!appReady || !fontsLoaded) return null;
-
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <QueryClientProvider client={queryClient}>
         <TamaguiProvider config={tamaguiConfig} defaultTheme="dark">
-          <AppChrome />
+          {bootstrapDone ? <AppChrome /> : null}
+          {splashLayerMounted ? (
+            <SplashBootstrapLayer
+              animatedOpacity={splashFade}
+              pointerEvents={bootstrapDone ? 'none' : 'auto'}
+            />
+          ) : null}
         </TamaguiProvider>
       </QueryClientProvider>
     </GestureHandlerRootView>

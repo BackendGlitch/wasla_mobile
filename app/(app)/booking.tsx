@@ -184,6 +184,7 @@ export default function BookingScreen() {
   return (
     <YStack flex={1} bg={appColors.bg}>
       <ScrollView contentContainerStyle={[styles.content, { paddingTop: contentPadTop }]}>
+        <View style={styles.screenGlow} pointerEvents="none" />
         <Pressable onPress={navigateBack} style={styles.backButton}>
           <XStack items="center" gap="$2">
             <MaterialCommunityIcons name="arrow-left" size={20} color={appColors.textPrimary} />
@@ -237,7 +238,7 @@ export default function BookingScreen() {
 
           <View style={styles.counterCard}>
             <Text color={appColors.textMuted} fontSize="$2" letterSpacing={0.6}>
-              SEATS TO YOUR ARRIVAL
+              SEATS
             </Text>
             <Text
               mt="$2"
@@ -312,22 +313,33 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 48,
     gap: 28,
+    overflow: 'hidden',
+  },
+  screenGlow: {
+    position: 'absolute',
+    top: -80,
+    right: -40,
+    width: 240,
+    height: 240,
+    borderRadius: 999,
+    backgroundColor: appColors.accentGlowSoft,
+    opacity: 0.35,
   },
   backButton: {
     alignSelf: 'flex-start',
     marginBottom: 12,
     paddingVertical: 10,
     paddingHorizontal: 14,
-    borderRadius: 999,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: appColors.borderStrong,
     backgroundColor: appColors.surfaceStrong,
   },
   counterCard: {
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: appColors.accentGlowSoft,
-    backgroundColor: '#143C5C',
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: appColors.borderStrong,
+    backgroundColor: appColors.surface,
     padding: 24,
     alignItems: 'center',
     gap: 18,
@@ -338,29 +350,31 @@ const styles = StyleSheet.create({
   counterCircle: {
     width: 124,
     height: 124,
-    borderRadius: 62,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.22)',
-    backgroundColor: 'rgba(154, 62, 62, 0.75)',
+    borderWidth: 1.5,
+    borderColor: appColors.borderStrong,
+    backgroundColor: 'rgba(211, 107, 43, 0.26)',
   },
   counterButton: {
     flex: 1,
     height: 48,
-    borderRadius: 14,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
-    backgroundColor: 'rgba(164, 62, 62, 0.82)',
+    borderColor: appColors.border,
+    backgroundColor: appColors.surfaceStrong,
   },
   primaryButton: {
-    borderRadius: 18,
+    borderRadius: 12,
     backgroundColor: appColors.accent,
     paddingVertical: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: appColors.borderStrong,
   },
   disabledControl: {
     opacity: 0.45,

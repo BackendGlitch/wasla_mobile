@@ -53,6 +53,7 @@ export default function TicketScreen() {
   return (
     <YStack flex={1} bg={appColors.bg}>
       <ScrollView contentContainerStyle={[styles.content, { paddingTop: contentPadTop }]}>
+        <View style={styles.screenGlow} pointerEvents="none" />
         <Pressable onPress={navigateBack} style={styles.backButton}>
           <XStack items="center" gap="$2">
             <MaterialCommunityIcons name="arrow-left" size={20} color={appColors.textPrimary} />
@@ -71,7 +72,7 @@ export default function TicketScreen() {
               Payment confirmed
             </Text>
             <Text color={appColors.textSecondary} fontSize="$4">
-              Boarding staff will scan the QR code above — keep this screen ready.
+              Show this QR code to staff when boarding.
             </Text>
           </YStack>
 
@@ -134,22 +135,33 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 48,
     gap: 28,
+    overflow: 'hidden',
+  },
+  screenGlow: {
+    position: 'absolute',
+    top: -75,
+    right: -32,
+    width: 230,
+    height: 230,
+    borderRadius: 999,
+    backgroundColor: appColors.accentGlowSoft,
+    opacity: 0.3,
   },
   backButton: {
     alignSelf: 'flex-start',
     marginBottom: 12,
     paddingVertical: 10,
     paddingHorizontal: 14,
-    borderRadius: 999,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: appColors.borderStrong,
     backgroundColor: appColors.surfaceStrong,
   },
   ticketCard: {
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: appColors.accentGlowSoft,
-    backgroundColor: '#143C5C',
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: appColors.borderStrong,
+    backgroundColor: appColors.surface,
     padding: 22,
   },
   qrWrap: {
@@ -160,15 +172,17 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     flex: 1,
-    borderRadius: 18,
+    borderRadius: 12,
     backgroundColor: appColors.accent,
     paddingVertical: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: appColors.borderStrong,
   },
   secondaryButton: {
     flex: 1,
-    borderRadius: 18,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: appColors.borderStrong,
     backgroundColor: appColors.surfaceStrong,

@@ -135,6 +135,7 @@ export default function PaymentScreen() {
   return (
     <YStack flex={1} bg={appColors.bg}>
       <ScrollView contentContainerStyle={[styles.content, { paddingTop: contentPadTop }]}>
+        <View style={styles.screenGlow} pointerEvents="none" />
         <Pressable onPress={navigateBack} style={styles.backButton}>
           <XStack items="center" gap="$2">
             <MaterialCommunityIcons name="arrow-left" size={20} color={appColors.textPrimary} />
@@ -150,7 +151,7 @@ export default function PaymentScreen() {
               PAYMENT
             </Text>
             <Text color={appColors.textPrimary} fontSize="$10" fontWeight="800">
-              Confirm trip and pay
+              Review and pay
             </Text>
           </YStack>
 
@@ -180,7 +181,7 @@ export default function PaymentScreen() {
               <ActivityIndicator color={appColors.bg} />
             ) : (
               <Text color={appColors.bg} fontSize="$4" fontWeight="800">
-                Mark payment as confirmed
+                Confirm payment
               </Text>
             )}
           </Pressable>
@@ -241,22 +242,33 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 48,
     gap: 28,
+    overflow: 'hidden',
+  },
+  screenGlow: {
+    position: 'absolute',
+    top: -85,
+    left: -35,
+    width: 240,
+    height: 240,
+    borderRadius: 999,
+    backgroundColor: appColors.accentGlowSoft,
+    opacity: 0.32,
   },
   backButton: {
     alignSelf: 'flex-start',
     marginBottom: 12,
     paddingVertical: 10,
     paddingHorizontal: 14,
-    borderRadius: 999,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: appColors.borderStrong,
     backgroundColor: appColors.surfaceStrong,
   },
   paymentCard: {
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: appColors.border,
-    backgroundColor: '#143C5C',
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: appColors.borderStrong,
+    backgroundColor: appColors.surface,
     padding: 20,
   },
   lpMaskShell: {
@@ -280,11 +292,13 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   primaryButton: {
-    borderRadius: 18,
+    borderRadius: 12,
     backgroundColor: appColors.accent,
     paddingVertical: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: appColors.borderStrong,
   },
   disabledControl: {
     opacity: 0.45,

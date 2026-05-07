@@ -116,9 +116,11 @@ export default function AuthBackdrop({ children, variant = 'teal' }: AuthBackdro
             <Stop offset="0.55" stopColor={palette.glowB} stopOpacity="0.1" />
             <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0" />
           </LinearGradient>
-          <Pattern id="auth-dots" width="22" height="22" patternUnits="userSpaceOnUse">
-            <SvgCircle cx="2" cy="2" r="1.2" fill="rgba(255,255,255,0.08)" />
-            <SvgCircle cx="12" cy="12" r="0.8" fill="rgba(255,255,255,0.04)" />
+          <Pattern id="auth-grid" width="26" height="26" patternUnits="userSpaceOnUse">
+            <Rect x="0" y="0" width="26" height="26" fill="rgba(0,0,0,0)" />
+            <Rect x="0" y="0" width="26" height="1" fill="rgba(222, 150, 95, 0.16)" />
+            <Rect x="0" y="0" width="1" height="26" fill="rgba(222, 150, 95, 0.16)" />
+            <SvgCircle cx="3" cy="3" r="0.9" fill="rgba(241, 206, 171, 0.22)" />
           </Pattern>
           <RadialGradient id="auth-vignette" cx="50%" cy="45%" r="75%">
             <Stop offset="0" stopColor="#000000" stopOpacity="0" />
@@ -131,7 +133,7 @@ export default function AuthBackdrop({ children, variant = 'teal' }: AuthBackdro
         <Rect width="100%" height="100%" fill="url(#auth-glow-b)" />
         <Rect y="25%" width="100%" height="50%" fill="url(#auth-band)" />
         <Rect width="100%" height="100%" fill="url(#auth-sheen)" />
-        <Rect width="100%" height="100%" fill="url(#auth-dots)" opacity={0.35} />
+        <Rect width="100%" height="100%" fill="url(#auth-grid)" opacity={0.5} />
         <Rect width="100%" height="100%" fill="url(#auth-vignette)" />
       </Svg>
 

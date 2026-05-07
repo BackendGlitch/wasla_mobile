@@ -1,20 +1,19 @@
 import { useRef, useState } from 'react';
 import { FlatList, Dimensions } from 'react-native';
 import type { ViewToken } from 'react-native';
-import { YStack, XStack, Text, Button, Circle } from 'tamagui';
+import { YStack, XStack, Text, Button } from 'tamagui';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SecureStore from 'expo-secure-store';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/store';
 import AuthBackdrop from '../../src/components/auth/AuthBackdrop';
+import { BrandLogo } from '../../src/components/BrandLogo';
 import { authColors } from '../../src/theme/authTheme';
 
 const { width } = Dimensions.get('window');
 
 interface OnboardingSlide {
   id: string;
-  icon: keyof typeof MaterialCommunityIcons.glyphMap;
   title: string;
   subtitle: string;
   chip: string;
@@ -23,21 +22,18 @@ interface OnboardingSlide {
 const slides: OnboardingSlide[] = [
   {
     id: '1',
-    icon: 'bus-clock',
     title: 'Book in Seconds',
     subtitle: 'Live schedules, seat picks, and instant e-tickets across Tunisia.',
     chip: 'Realtime routes',
   },
   {
     id: '2',
-    icon: 'map-marker-path',
     title: 'Smart Route Discovery',
     subtitle: 'Find the fastest route with clear pricing and station insights.',
     chip: 'Optimized trips',
   },
   {
     id: '3',
-    icon: 'ticket-confirmation',
     title: 'Tap, Scan, Ride',
     subtitle: 'Your ticket lives in the app with secure QR validation.',
     chip: 'Secure boarding',
@@ -96,7 +92,7 @@ export default function OnboardingScreen() {
           shadowOpacity={0.2}
           shadowRadius={24}
         >
-          <MaterialCommunityIcons name={item.icon} size={72} color={authColors.accent} />
+          <BrandLogo size={112} />
         </YStack>
 
         <XStack
@@ -144,9 +140,7 @@ export default function OnboardingScreen() {
       <YStack flex={1} pt="$8" pb="$6">
         <XStack px="$5" items="center" justify="space-between">
           <XStack items="center" gap="$2">
-            <Circle size={36} bg={authColors.accentSoft} borderColor={authColors.borderStrong} borderWidth={1}>
-              <MaterialCommunityIcons name="bus" size={18} color={authColors.accent} />
-            </Circle>
+            <BrandLogo size={36} borderRadius={8} />
             <Text fontSize="$5" fontWeight="700" color={authColors.textPrimary} letterSpacing={1}>
               WASLA
             </Text>

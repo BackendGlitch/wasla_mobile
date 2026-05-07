@@ -17,6 +17,7 @@ import { Text, XStack, YStack } from 'tamagui';
 import { getStations, type Station } from '../../src/lib/stationsApi';
 import { getStationRoutes, type RouteData } from '../../src/lib/routesApi';
 import { DestinationQueueRow } from '../../src/components/booking/DestinationQueueRow';
+import { BrandLogo } from '../../src/components/BrandLogo';
 import { buildBookingRouteMeta, formatCurrency, formatIssuedAt } from '../../src/lib/bookingFlow';
 import { resolveCentralServerUrl } from '../../src/lib/serverConfig';
 import { toNetworkErrorInfo, toUserFacingErrorCopy } from '../../src/lib/networkErrors';
@@ -188,7 +189,7 @@ export default function MainScreen() {
   const [stationLoadError, setStationLoadError] = useState<string | null>(null);
   const [stationPageSize, setStationPageSize] = useState(25);
   const [routePageSize, setRoutePageSize] = useState(20);
-  /** Location / station-list context under “Confirm depart station” — must be state so the sheet re-renders */
+  /** Location / station-list context under the depart-station step — must be state so the sheet re-renders */
   const [stationLocationNote, setStationLocationNote] = useState('');
 
   const {
@@ -730,12 +731,14 @@ export default function MainScreen() {
         showsVerticalScrollIndicator={false}
       >
       <YStack flex={1} bg={appColors.bg} px="$5" pt="$7" pb="$6" gap="$4">
+        <View style={styles.screenGlowTop} pointerEvents="none" />
+        <View style={styles.screenGlowBottom} pointerEvents="none" />
         <YStack gap="$2">
           <Text color={appColors.textMuted} fontSize="$2" letterSpacing={0.8}>
-            WASLA BOOKING
+            BOOKING
           </Text>
           <Text color={appColors.textPrimary} fontSize="$10" fontWeight="800">
-            Book your next ride
+            Book your ride
           </Text>
           <Text color={appColors.textSecondary} fontSize="$4">
             Pick a depart station, choose one of its available routes, then continue to seats and payment.
@@ -747,7 +750,7 @@ export default function MainScreen() {
             <XStack items="center" justify="space-between" gap="$3">
               <YStack flex={1} gap="$1.5">
                 <Text color={appColors.textMuted} fontSize="$2" letterSpacing={0.7}>
-                  CURRENT DEPART STATION
+                  DEPARTURE STATION
                 </Text>
                 <Text color={appColors.textPrimary} fontSize="$7" fontWeight="800">
                   {selectedStation?.name ?? 'Choose station'}
@@ -764,7 +767,7 @@ export default function MainScreen() {
                 {isResolvingLocation ? (
                   <ActivityIndicator color={appColors.accent} />
                 ) : (
-                  <MaterialCommunityIcons name="bus-clock" size={28} color={appColors.accent} />
+                  <BrandLogo size={48} borderRadius={10} />
                 )}
               </View>
             </XStack>
@@ -870,7 +873,7 @@ export default function MainScreen() {
               {tickets.length}
             </Text>
             <Text color={appColors.textSecondary} fontSize="$3">
-              Created in this session
+              Issued this session
             </Text>
           </View>
         </XStack>
@@ -885,7 +888,7 @@ export default function MainScreen() {
           >
             <YStack gap="$1" style={styles.historyHeaderTextCol}>
               <Text color={appColors.textPrimary} fontSize="$6" fontWeight="800">
-                Booking history
+                Recent trips
               </Text>
               <Text color={appColors.textSecondary} fontSize="$3">
                 Your latest paid tickets appear here for quick access.
@@ -898,7 +901,7 @@ export default function MainScreen() {
               style={[styles.historyLink, styles.historyLinkPill]}
             >
               <Text color={appColors.textPrimary} fontSize="$3" fontWeight="700">
-                Open
+                View all
               </Text>
             </Pressable>
           </XStack>
@@ -1042,33 +1045,34 @@ export default function MainScreen() {
                   ]}
                 >
                   <Text color={appColors.bg} fontSize="$4" fontWeight="800">
-                    Next
+                    Continue
                   </Text>
                 </Pressable>
               </>
             ) : (
               <>
                 <Text color={appColors.textPrimary} fontSize="$7" fontWeight="800">
-                  Pick your destination
+                  Choose destination
                 </Text>
                 <Text mt="$1" color={appColors.textSecondary} fontSize="$4">
-                  Queues loaded from{' '}
+                  Routes from{' '}
                   <Text fontWeight="800" color={appColors.textPrimary}>
                     {draftStation?.name ?? 'your station'}
-                  </Text>{' '}
-                  via Wasla — showing vehicles reporting available seats right now.
+                  </Text>
+                  {' '}
+                  with live seat counts when available.
                 </Text>
                 <Text mt="$2" color={appColors.textMuted} fontSize="$2">
                   {realtimeStatus === 'connected'
-                    ? 'Seat and vehicle counts refresh live while this sheet is open.'
-                    : 'Connect to Wasla (Live tab) for automatic queue refreshes when vehicles change.'}
+                    ? 'Seat counts update automatically while this screen is open.'
+                    : 'Connect to the internet for live updates when routes change.'}
                 </Text>
 
                 {routesFetchLoading ? (
                   <View style={[styles.centerState, styles.sheetRoutesBody]}>
                     <ActivityIndicator size="large" color={appColors.accent} />
                     <Text mt="$4" color={appColors.textSecondary} fontSize="$4" style={styles.centeredText}>
-                      Loading queues from this depart station…
+                      Loading routes from this station…
                     </Text>
                   </View>
                 ) : routesFetchError ? (
@@ -1137,66 +1141,89 @@ export default function MainScreen() {
 }
 
 const styles = StyleSheet.create({
+  screenGlowTop: {
+    position: 'absolute',
+    top: -100,
+    right: -36,
+    width: 240,
+    height: 240,
+    borderRadius: 999,
+    backgroundColor: appColors.accentGlowSoft,
+    opacity: 0.28,
+  },
+  screenGlowBottom: {
+    position: 'absolute',
+    bottom: 180,
+    left: -48,
+    width: 210,
+    height: 210,
+    borderRadius: 999,
+    backgroundColor: appColors.accentSoft,
+    opacity: 0.22,
+  },
   heroCard: {
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: appColors.accentGlowSoft,
-    backgroundColor: appColors.surfaceStrong,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: appColors.borderStrong,
+    backgroundColor: appColors.surface,
     padding: 22,
   },
   heroIconWrap: {
     width: 56,
     height: 56,
-    borderRadius: 18,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: appColors.accentGlow,
-    backgroundColor: appColors.accentSoft,
+    borderColor: appColors.borderStrong,
+    backgroundColor: appColors.surfaceStrong,
+    overflow: 'hidden',
   },
   screenContent: {
     paddingBottom: 130,
   },
   primaryButton: {
-    borderRadius: 18,
+    borderRadius: 12,
     backgroundColor: appColors.accent,
     paddingVertical: 16,
     paddingHorizontal: 20,
-  },
-  secondaryButton: {
-    borderRadius: 18,
     borderWidth: 1,
     borderColor: appColors.borderStrong,
-    backgroundColor: appColors.surfaceStrong,
+  },
+  secondaryButton: {
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: appColors.borderStrong,
+    backgroundColor: appColors.surface,
     paddingVertical: 14,
     paddingHorizontal: 20,
     marginTop: 12,
   },
   errorCard: {
-    borderRadius: 22,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: 'rgba(255, 111, 111, 0.28)',
     backgroundColor: 'rgba(86, 24, 24, 0.38)',
     padding: 18,
   },
   infoCard: {
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: appColors.border,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: appColors.borderStrong,
     backgroundColor: appColors.surface,
     padding: 18,
   },
   historyCard: {
     overflow: 'hidden',
     alignSelf: 'stretch',
-    borderRadius: 26,
-    borderWidth: 1,
-    borderColor: appColors.border,
-    backgroundColor: appColors.surfaceStrong,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: appColors.borderStrong,
+    backgroundColor: appColors.surface,
     padding: 20,
   },
   historyLink: {
-    borderRadius: 999,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: appColors.borderStrong,
     backgroundColor: appColors.surface,
@@ -1214,20 +1241,20 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   emptyHistory: {
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: appColors.border,
-    backgroundColor: appColors.surface,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: appColors.borderStrong,
+    backgroundColor: appColors.surfaceStrong,
     padding: 20,
     minHeight: 132,
     alignItems: 'center',
     justifyContent: 'center',
   },
   historyRow: {
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: appColors.border,
-    backgroundColor: appColors.surface,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: appColors.borderStrong,
+    backgroundColor: appColors.surfaceStrong,
     padding: 16,
     flexDirection: 'row',
     alignItems: 'center',
@@ -1236,7 +1263,7 @@ const styles = StyleSheet.create({
   retryButton: {
     marginTop: 14,
     alignSelf: 'flex-start',
-    borderRadius: 999,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: appColors.borderStrong,
     backgroundColor: appColors.surfaceStrong,
@@ -1247,7 +1274,7 @@ const styles = StyleSheet.create({
     marginTop: 14,
     marginBottom: 16,
     alignSelf: 'center',
-    borderRadius: 999,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: appColors.borderStrong,
     backgroundColor: appColors.surfaceStrong,
@@ -1258,7 +1285,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     paddingVertical: 10,
     paddingHorizontal: 14,
-    borderRadius: 999,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: appColors.borderStrong,
     backgroundColor: appColors.surfaceStrong,
@@ -1272,7 +1299,7 @@ const styles = StyleSheet.create({
   },
   sheetCloseButton: {
     padding: 6,
-    borderRadius: 999,
+    borderRadius: 8,
     marginRight: -2,
   },
   sheetButton: {
@@ -1280,11 +1307,13 @@ const styles = StyleSheet.create({
     left: 16,
     right: 16,
     bottom: 18,
-    borderRadius: 18,
+    borderRadius: 12,
     backgroundColor: appColors.accent,
     paddingVertical: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: appColors.borderStrong,
   },
   buttonDisabled: {
     opacity: 0.45,

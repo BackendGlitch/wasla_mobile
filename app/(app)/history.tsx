@@ -21,6 +21,7 @@ export default function HistoryScreen() {
   return (
     <YStack flex={1} bg={appColors.bg}>
       <ScrollView contentContainerStyle={[styles.content, { paddingTop: contentPadTop }]}>
+        <View style={styles.screenGlow} pointerEvents="none" />
         <Pressable onPress={navigateBack} style={styles.backButton}>
           <XStack items="center" gap="$2">
             <MaterialCommunityIcons name="arrow-left" size={20} color={appColors.textPrimary} />
@@ -113,36 +114,47 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 20,
     paddingBottom: 140,
+    overflow: 'hidden',
+  },
+  screenGlow: {
+    position: 'absolute',
+    top: -70,
+    left: -28,
+    width: 220,
+    height: 220,
+    borderRadius: 999,
+    backgroundColor: appColors.accentGlowSoft,
+    opacity: 0.3,
   },
   backButton: {
     alignSelf: 'flex-start',
     marginBottom: 12,
     paddingVertical: 10,
     paddingHorizontal: 14,
-    borderRadius: 999,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: appColors.borderStrong,
     backgroundColor: appColors.surfaceStrong,
   },
   emptyState: {
     minHeight: 340,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: appColors.border,
-    backgroundColor: appColors.surfaceStrong,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: appColors.borderStrong,
+    backgroundColor: appColors.surface,
     padding: 24,
     alignItems: 'center',
     justifyContent: 'center',
   },
   ticketCard: {
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: appColors.border,
-    backgroundColor: appColors.surfaceStrong,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: appColors.borderStrong,
+    backgroundColor: appColors.surface,
     padding: 18,
   },
   badge: {
-    borderRadius: 999,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: appColors.borderStrong,
     backgroundColor: appColors.surface,
@@ -155,12 +167,14 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     marginTop: 20,
-    borderRadius: 18,
+    borderRadius: 12,
     backgroundColor: appColors.accent,
     paddingVertical: 16,
     paddingHorizontal: 20,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: appColors.borderStrong,
   },
   buttonPressed: {
     opacity: 0.92,
