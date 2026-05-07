@@ -2,6 +2,7 @@ import QRCode from 'react-native-qrcode-svg';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text, XStack, YStack } from 'tamagui';
 import { formatCurrency, formatIssuedAt } from '../../src/lib/bookingFlow';
 import { singleRouteParam } from '../../src/lib/postAuthFlow';
@@ -10,13 +11,29 @@ import { appColors } from '../../src/theme/appTheme';
 
 export default function TicketScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ ticketId?: string | string[] }>();
   const ticketId = singleRouteParam(params.ticketId) ?? '';
   const ticket = useBookingStore((state) => state.tickets.find((item) => item.id === ticketId));
+  const contentPadTop = Math.max(insets.top + 16, 56);
+
+  const navigateBack = () => {
+    if (router.canGoBack()) router.back();
+    else router.replace('/(app)');
+  };
 
   if (!ticket) {
     return (
-      <YStack flex={1} bg={appColors.bg} px="$5" pt="$7" items="center" justify="center" gap="$4">
+      <YStack flex={1} bg={appColors.bg} px="$5" pt={Math.max(insets.top + 8, 36)} gap="$4">
+        <Pressable onPress={navigateBack} style={styles.backButton}>
+          <XStack items="center" gap="$2">
+            <MaterialCommunityIcons name="arrow-left" size={20} color={appColors.textPrimary} />
+            <Text color={appColors.textPrimary} fontSize="$4" fontWeight="700">
+              Back
+            </Text>
+          </XStack>
+        </Pressable>
+        <YStack flex={1} items="center" justify="center" gap="$4">
         <Text color={appColors.textPrimary} fontSize="$7" fontWeight="800">
           Ticket not found
         </Text>
@@ -28,13 +45,23 @@ export default function TicketScreen() {
             Back to home
           </Text>
         </Pressable>
+        </YStack>
       </YStack>
     );
   }
 
   return (
     <YStack flex={1} bg={appColors.bg}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingTop: contentPadTop }]}>
+        <Pressable onPress={navigateBack} style={styles.backButton}>
+          <XStack items="center" gap="$2">
+            <MaterialCommunityIcons name="arrow-left" size={20} color={appColors.textPrimary} />
+            <Text color={appColors.textPrimary} fontSize="$4" fontWeight="700">
+              Back
+            </Text>
+          </XStack>
+        </Pressable>
+
         <YStack gap="$5">
           <YStack gap="$2">
             <Text color={appColors.textMuted} fontSize="$2" letterSpacing={0.7}>
@@ -44,7 +71,7 @@ export default function TicketScreen() {
               Payment confirmed
             </Text>
             <Text color={appColors.textSecondary} fontSize="$4">
-              Show this ticket and QR code when boarding.
+              Boarding staff will scan the QR code above — keep this screen ready.
             </Text>
           </YStack>
 
@@ -54,7 +81,6 @@ export default function TicketScreen() {
             </View>
 
             <YStack mt="$5" gap="$3">
-              <TicketRow label="Ticket code" value={ticket.id} />
               <TicketRow label="Depart station" value={ticket.stationName} />
               <TicketRow label="Arrival station" value={ticket.destinationName} />
               <TicketRow label="Seats" value={`${ticket.seatCount}`} />
@@ -106,9 +132,18 @@ function TicketRow({ label, value, highlight = false }: { label: string; value: 
 const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 20,
-    paddingTop: 56,
     paddingBottom: 48,
     gap: 28,
+  },
+  backButton: {
+    alignSelf: 'flex-start',
+    marginBottom: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: appColors.borderStrong,
+    backgroundColor: appColors.surfaceStrong,
   },
   ticketCard: {
     borderRadius: 28,

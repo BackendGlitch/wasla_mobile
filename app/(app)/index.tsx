@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { isAxiosError } from 'axios';
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import {
   BottomSheetBackdrop,
@@ -13,19 +16,35 @@ import {
 import { Text, XStack, YStack } from 'tamagui';
 import { getStations, type Station } from '../../src/lib/stationsApi';
 import { getStationRoutes, type RouteData } from '../../src/lib/routesApi';
+import { DestinationQueueRow } from '../../src/components/booking/DestinationQueueRow';
 import { buildBookingRouteMeta, formatCurrency, formatIssuedAt } from '../../src/lib/bookingFlow';
 import { resolveCentralServerUrl } from '../../src/lib/serverConfig';
 import { toNetworkErrorInfo, toUserFacingErrorCopy } from '../../src/lib/networkErrors';
 import { appColors } from '../../src/theme/appTheme';
 import {
+  useBookingRoutesLiveStore,
   useBookingStore,
   useConnectivityStore,
+  useRealtimeStore,
   useStationStore,
   type StationWithDistance,
 } from '../../src/store';
 
 const LAST_KNOWN_MAX_AGE_MS = 10 * 60 * 1000;
 const MAX_DISTANCE_KM = 999;
+
+/** Match `(app)/_layout.tsx` — restored when booking sheets dismiss */
+const MAIN_TAB_BAR_STYLE = {
+  position: 'absolute' as const,
+  backgroundColor: 'transparent',
+  borderTopWidth: 0,
+};
+const SHEET_HIDDEN_TAB_BAR_STYLE = {
+  ...MAIN_TAB_BAR_STYLE,
+  height: 0,
+  opacity: 0,
+  overflow: 'hidden' as const,
+};
 
 function hasStationCoordinates(
   station: Station,
@@ -107,12 +126,24 @@ function toNearbyStations(
     .sort(sortStations);
 }
 
-function formatDistance(distanceKm: number | null): string {
-  if (distanceKm === null) return 'Coordinates unavailable';
+/** Human-readable km/m from user → station when both have coordinates; otherwise null */
+function formatKmAway(distanceKm: number | null): string | null {
+  if (distanceKm === null) return null;
   const clampedDistance = Math.min(MAX_DISTANCE_KM, Math.max(0, distanceKm));
   if (clampedDistance < 1) return `${Math.round(clampedDistance * 1000)} m away`;
-  if (clampedDistance >= MAX_DISTANCE_KM) return `${MAX_DISTANCE_KM} km away`;
+  if (clampedDistance >= MAX_DISTANCE_KM) return `${MAX_DISTANCE_KM}+ km away`;
   return `${clampedDistance.toFixed(1)} km away`;
+}
+
+function formatStatusWord(status: Station['status']) {
+  return status === 'online' ? 'Online' : 'Offline';
+}
+
+/** One line under the station title on the main card */
+function stationCardSubtitle(station: StationWithDistance): string {
+  const away = formatKmAway(station.distanceKm);
+  const statusWord = formatStatusWord(station.status);
+  return away ? `${away} · ${statusWord}` : statusWord;
 }
 
 function getStatusColors(status: Station['status'], isSelected: boolean) {
@@ -133,23 +164,32 @@ function getStatusColors(status: Station['status'], isSelected: boolean) {
 
 export default function MainScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const stationSheetRef = useRef<BottomSheetModal>(null);
-  const routeSheetRef = useRef<BottomSheetModal>(null);
-  const stationSnapPoints = useMemo(() => ['65%', '92%'], []);
-  const routeSnapPoints = useMemo(() => ['62%', '88%'], []);
+  /** Gorhom modal snap index -1 closed; synced to hide glossy tab bar so Next isn’t overlapped */
+  const stationSnapIndexRef = useRef(-1);
+  const tabBarSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const routesAbortRef = useRef<AbortController | null>(null);
+  const stationSnapPoints = useMemo(() => ['68%', '93%'], []);
+  type BookingSheetStep = 'station' | 'routes';
+  const [bookingSheetStep, setBookingSheetStep] = useState<BookingSheetStep>('station');
+  const [fetchedRoutes, setFetchedRoutes] = useState<RouteData[] | null>(null);
+  const [routesFetchLoading, setRoutesFetchLoading] = useState(false);
+  const [routesFetchError, setRoutesFetchError] = useState<string | null>(null);
   const centralServer = useMemo(() => resolveCentralServerUrl(), []);
   const serverUrl = centralServer.url;
   const isHttpServer = typeof serverUrl === 'string' && serverUrl.startsWith('http://');
-  const coordsDebugRef = useRef<string>('No location yet');
   const watchSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
   const stationsRef = useRef<Station[]>([]);
   const lastGpsUpdateAtRef = useRef<number>(0);
   const [draftStation, setDraftStation] = useState<StationWithDistance | null>(null);
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
   const [stationLoadError, setStationLoadError] = useState<string | null>(null);
-  const [stationRefreshTick, setStationRefreshTick] = useState(0);
   const [stationPageSize, setStationPageSize] = useState(25);
   const [routePageSize, setRoutePageSize] = useState(20);
+  /** Location / station-list context under “Confirm depart station” — must be state so the sheet re-renders */
+  const [stationLocationNote, setStationLocationNote] = useState('');
 
   const {
     selectedStation,
@@ -164,11 +204,59 @@ export default function MainScreen() {
   } = useStationStore();
   const tickets = useBookingStore((state) => state.tickets);
   const reconnectEpoch = useConnectivityStore((s) => s.reconnectEpoch);
+  const realtimeStatus = useRealtimeStore((s) => s.status);
 
-  const { data: routeOptions, isLoading: isLoadingRoutes, isError: isRouteError, refetch: refetchRoutes } = useQuery({
-    queryKey: ['booking-routes', draftStation?.id],
-    queryFn: ({ signal }) => getStationRoutes(draftStation?.id ?? '', { signal }),
-    enabled: !!draftStation?.id && draftStation.status === 'online',
+  const sheetStickyFooterBottom = 14 + Math.max(insets.bottom, Platform.OS === 'ios' ? 12 : 10);
+  /** Clear the absolute footer + one route card tail; avoids overlap while scrolling */
+  const sheetFlatListPaddingBottom = 128 + sheetStickyFooterBottom;
+
+  const syncTabBarToBookingSheets = useCallback(() => {
+    if (tabBarSyncTimerRef.current) clearTimeout(tabBarSyncTimerRef.current);
+    tabBarSyncTimerRef.current = setTimeout(() => {
+      tabBarSyncTimerRef.current = null;
+      const anyOpen = stationSnapIndexRef.current >= 0;
+      navigation.setOptions({
+        tabBarStyle: anyOpen ? SHEET_HIDDEN_TAB_BAR_STYLE : MAIN_TAB_BAR_STYLE,
+      });
+    }, 52);
+  }, [navigation]);
+
+  const resetBookingModalInternals = useCallback(() => {
+    routesAbortRef.current?.abort();
+    routesAbortRef.current = null;
+    setBookingSheetStep('station');
+    setFetchedRoutes(null);
+    setRoutesFetchLoading(false);
+    setRoutesFetchError(null);
+    setSelectedRouteId(null);
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        if (tabBarSyncTimerRef.current) {
+          clearTimeout(tabBarSyncTimerRef.current);
+          tabBarSyncTimerRef.current = null;
+        }
+        resetBookingModalInternals();
+        stationSnapIndexRef.current = -1;
+        stationSheetRef.current?.dismiss();
+        navigation.setOptions({
+          tabBarStyle: MAIN_TAB_BAR_STYLE,
+        });
+      };
+    }, [navigation, resetBookingModalInternals]),
+  );
+
+  const {
+    data: stationsFromApi,
+    isLoading: isStationsQueryLoading,
+    isError: isStationsQueryError,
+    error: stationsQueryError,
+    refetch: refetchStations,
+  } = useQuery({
+    queryKey: ['central-stations', 'discovery-list-v1'],
+    queryFn: ({ signal }) => getStations({ signal }),
     retry: 2,
     retryDelay: (attemptIndex) => Math.min(8_000, 500 * 2 ** attemptIndex),
   });
@@ -180,12 +268,14 @@ export default function MainScreen() {
 
   const canLoadMoreStations = nearbyStations.length > visibleNearbyStations.length;
 
+  const routeListBaseline = fetchedRoutes ?? [];
+
   const visibleRoutes = useMemo(
-    () => (routeOptions ?? []).slice(0, routePageSize),
-    [routeOptions, routePageSize],
+    () => routeListBaseline.slice(0, routePageSize),
+    [routeListBaseline, routePageSize],
   );
 
-  const canLoadMoreRoutes = (routeOptions?.length ?? 0) > visibleRoutes.length;
+  const canLoadMoreRoutes = routeListBaseline.length > visibleRoutes.length;
 
   const renderStationListFooter = useCallback(() => {
     if (!canLoadMoreStations) return <View style={{ height: 18 }} />;
@@ -205,7 +295,7 @@ export default function MainScreen() {
     if (!canLoadMoreRoutes) return <View style={{ height: 18 }} />;
     return (
       <Pressable
-        onPress={() => setRoutePageSize((value) => Math.min(routeOptions?.length ?? value, value + 20))}
+        onPress={() => setRoutePageSize((value) => Math.min(routeListBaseline.length, value + 20))}
         style={({ pressed }) => [styles.loadMoreButton, pressed ? styles.buttonPressed : null]}
       >
         <Text color={appColors.textPrimary} fontSize="$3" fontWeight="800">
@@ -213,50 +303,117 @@ export default function MainScreen() {
         </Text>
       </Pressable>
     );
-  }, [canLoadMoreRoutes, routeOptions?.length]);
+  }, [canLoadMoreRoutes, routeListBaseline.length]);
 
-  useEffect(() => {
-    setRoutePageSize(20);
-  }, [draftStation?.id]);
+  const baselineSelectedRoute = useMemo(
+    () => routeListBaseline.find((route) => String(route.id) === selectedRouteId) ?? null,
+    [routeListBaseline, selectedRouteId],
+  );
 
-  const selectedRoute = useMemo(
-    () => routeOptions?.find((route) => String(route.id) === selectedRouteId) ?? null,
-    [routeOptions, selectedRouteId],
+  const selectedRouteLiveSlice = useBookingRoutesLiveStore(
+    useCallback(
+      (s) =>
+        draftStation?.id && selectedRouteId
+          ? s.metricsByStation[draftStation.id]?.[selectedRouteId]
+          : undefined,
+      [draftStation?.id, selectedRouteId],
+    ),
+  );
+
+  const selectedRoute = useMemo(() => {
+    if (!baselineSelectedRoute) return null;
+    if (!selectedRouteLiveSlice) return baselineSelectedRoute;
+    return {
+      ...baselineSelectedRoute,
+      available_seats: selectedRouteLiveSlice.available_seats,
+      vehicles_count: selectedRouteLiveSlice.vehicles_count,
+    };
+  }, [baselineSelectedRoute, selectedRouteLiveSlice]);
+
+  const fetchQueuesForDepartStation = useCallback(
+    async (station: StationWithDistance) => {
+      routesAbortRef.current?.abort();
+      const ac = new AbortController();
+      routesAbortRef.current = ac;
+      useBookingRoutesLiveStore.getState().clearLiveMetricsForStation(station.id);
+      setRoutesFetchLoading(true);
+      setRoutesFetchError(null);
+      setFetchedRoutes(null);
+      try {
+        const rows = await getStationRoutes(station.id, { signal: ac.signal });
+        if (!ac.signal.aborted) {
+          setFetchedRoutes(rows);
+        }
+      } catch (error: unknown) {
+        if (ac.signal.aborted || (isAxiosError(error) && error.code === 'ERR_CANCELED')) {
+          return;
+        }
+        const friendly = toUserFacingErrorCopy(
+          error,
+          'Could not load destinations from this station.',
+        );
+        const detailSuffix = friendly.detail ? ` ${friendly.detail}` : '';
+        if (!ac.signal.aborted) {
+          setRoutesFetchError(`${friendly.title}${detailSuffix}`.trim());
+        }
+      } finally {
+        if (!ac.signal.aborted) setRoutesFetchLoading(false);
+      }
+    },
+    [],
   );
 
   const openBookingFlow = useCallback(() => {
+    resetBookingModalInternals();
     setDraftStation(selectedStation);
-    setSelectedRouteId(null);
     setStationPageSize(25);
+    stationSnapIndexRef.current = 0;
+    syncTabBarToBookingSheets();
     stationSheetRef.current?.present();
-  }, [selectedStation]);
+  }, [resetBookingModalInternals, selectedStation, syncTabBarToBookingSheets]);
 
   const openStationPicker = useCallback(() => {
+    resetBookingModalInternals();
     const fallback = pickDefaultStation(nearbyStations);
     setDraftStation(selectedStation ?? fallback);
-    setSelectedRouteId(null);
     setStationPageSize(25);
+    stationSnapIndexRef.current = 0;
+    syncTabBarToBookingSheets();
     stationSheetRef.current?.present();
-  }, [nearbyStations, selectedStation]);
+  }, [nearbyStations, resetBookingModalInternals, selectedStation, syncTabBarToBookingSheets]);
 
   const handleSelectStation = useCallback((station: StationWithDistance) => {
     setDraftStation(station);
     setSelectedRouteId(null);
   }, []);
 
-  const handleStationNext = useCallback(() => {
-    if (!draftStation) return;
-    setSelectedStation(draftStation);
-    stationSheetRef.current?.dismiss();
+  const handleBackToStationStep = useCallback(() => {
+    routesAbortRef.current?.abort();
+    routesAbortRef.current = null;
+    setBookingSheetStep('station');
+    setRoutesFetchLoading(false);
+    setRoutesFetchError(null);
+    const sid = draftStation?.id?.trim();
+    if (sid) useBookingRoutesLiveStore.getState().clearLiveMetricsForStation(sid);
+    setFetchedRoutes(null);
+    setSelectedRouteId(null);
     setRoutePageSize(20);
-    setTimeout(() => routeSheetRef.current?.present(), 220);
-  }, [draftStation, setSelectedStation]);
+  }, [draftStation?.id]);
+
+  const handleStationNext = useCallback(() => {
+    if (!draftStation || draftStation.status !== 'online') return;
+    setSelectedStation(draftStation);
+    setBookingSheetStep('routes');
+    setSelectedRouteId(null);
+    setRoutePageSize(20);
+    void fetchQueuesForDepartStation(draftStation);
+  }, [draftStation, fetchQueuesForDepartStation, setSelectedStation]);
 
   const handleRouteNext = useCallback(() => {
     if (!draftStation || !selectedRoute || draftStation.status !== 'online') return;
     const meta = buildBookingRouteMeta(selectedRoute, draftStation.name);
 
-    routeSheetRef.current?.dismiss();
+    stationSheetRef.current?.dismiss();
     router.push({
       pathname: '/(app)/booking',
       params: {
@@ -270,7 +427,6 @@ export default function MainScreen() {
         pricePerSeat: String(meta.pricePerSeat),
         etdIso: meta.etdIso,
         etdLabel: meta.etdLabel,
-        vehiclePlate: meta.vehiclePlate,
       },
     });
   }, [draftStation, router, selectedRoute]);
@@ -283,7 +439,7 @@ export default function MainScreen() {
 
       const safeCoords = sanitizeCoords(latitude, longitude);
       if (!safeCoords) return;
-      coordsDebugRef.current = `Live GPS: ${safeCoords.latitude.toFixed(6)}, ${safeCoords.longitude.toFixed(6)}`;
+      setStationLocationNote('Sorted by distance from you.');
 
       const stations = stationsRef.current;
       if (!stations.length) return;
@@ -297,12 +453,58 @@ export default function MainScreen() {
       setNearbyStations(rankedStations);
       setSelectedStation(nextStation);
     },
-    [setNearbyStations, setSelectedStation],
+    [setNearbyStations, setSelectedStation, setStationLocationNote],
   );
 
   useEffect(() => {
+    if (!isStationsQueryError || stationsQueryError == null) return;
+    if (toNetworkErrorInfo(stationsQueryError).kind === 'cancelled') return;
+
+    setIsResolvingLocation(false);
+    setStationLocationNote('Could not load the station list from the server.');
+
+    const baseMessage = serverUrl
+      ? `Could not load stations from ${serverUrl}.`
+      : (centralServer.error ?? 'Central server URL is not configured.');
+    const friendly = toUserFacingErrorCopy(stationsQueryError, baseMessage);
+
+    const hints: string[] = [];
+    if (Platform.OS === 'ios' && isHttpServer) {
+      hints.push(
+        'iOS may block plain HTTP (ATS). If this is a dev build, allow insecure loads in iOS Info.plist or switch your backend to HTTPS.',
+      );
+    }
+
+    const detailSuffix = friendly.detail ? ` ${friendly.detail}` : '';
+    setStationLoadError([friendly.title + detailSuffix, ...hints].filter(Boolean).join('\n'));
+    setLocationPermission('undetermined');
+    setNearbyStations([]);
+    setSelectedStation(null);
+  }, [
+    centralServer.error,
+    isHttpServer,
+    isStationsQueryError,
+    serverUrl,
+    stationsQueryError,
+    setIsResolvingLocation,
+    setLocationPermission,
+    setNearbyStations,
+    setSelectedStation,
+    setStationLocationNote,
+  ]);
+
+  useEffect(() => {
     let mounted = true;
-    const stationsAbort = new AbortController();
+
+    if (isStationsQueryError) {
+      return;
+    }
+
+    if (isStationsQueryLoading || stationsFromApi === undefined) {
+      setIsResolvingLocation(true);
+      setStationLocationNote('Loading stations from the server…');
+      return;
+    }
 
     const resolveLiveCoords = async () => {
       try {
@@ -329,7 +531,7 @@ export default function MainScreen() {
       setStationLoadError(null);
 
       try {
-        const stations = await getStations({ signal: stationsAbort.signal });
+        const stations = stationsFromApi;
         if (!mounted) return;
 
         setStations(stations);
@@ -339,7 +541,7 @@ export default function MainScreen() {
         watchSubscriptionRef.current = null;
 
         if (!stations.length) {
-          coordsDebugRef.current = 'No stations returned by the server';
+          setStationLocationNote('The server returned no stations to show here.');
           setStationLoadError('The server responded, but it returned no stations.');
           setNearbyStations([]);
           setSelectedStation(null);
@@ -350,7 +552,7 @@ export default function MainScreen() {
         const hasGeolocatableStations = stations.some(hasStationCoordinates);
         if (!hasGeolocatableStations) {
           const rankedStations = toNearbyStations(stations);
-          coordsDebugRef.current = 'Server stations do not expose coordinates yet';
+          setStationLocationNote('Online outlets first. Turn on Location to sort by distance when positions are available.');
           setLocationPermission('undetermined');
           setNearbyStations(rankedStations);
           setSelectedStation(pickDefaultStation(rankedStations));
@@ -368,7 +570,7 @@ export default function MainScreen() {
             const coords = await resolveLiveCoords();
             if (!mounted) return;
             userCoords = coords;
-            coordsDebugRef.current = `Live GPS: ${coords.latitude.toFixed(6)}, ${coords.longitude.toFixed(6)}`;
+            setStationLocationNote('Sorted by distance from you.');
           } catch {
             const lastKnown = await Location.getLastKnownPositionAsync();
             if (!mounted) return;
@@ -376,12 +578,12 @@ export default function MainScreen() {
               const lastKnownCoords = sanitizeCoords(lastKnown.coords.latitude, lastKnown.coords.longitude);
               if (lastKnownCoords) {
                 userCoords = lastKnownCoords;
-                coordsDebugRef.current = `Last known: ${lastKnownCoords.latitude.toFixed(6)}, ${lastKnownCoords.longitude.toFixed(6)}`;
+                setStationLocationNote('Sorted by last known location.');
               } else {
-                coordsDebugRef.current = 'No usable device coordinates available';
+                setStationLocationNote('Pick a station from the list.');
               }
             } else {
-              coordsDebugRef.current = 'No usable device coordinates available';
+              setStationLocationNote('Pick a station from the list.');
             }
           }
         } else {
@@ -392,12 +594,12 @@ export default function MainScreen() {
             const lastKnownCoords = sanitizeCoords(lastKnown.coords.latitude, lastKnown.coords.longitude);
             if (lastKnownCoords) {
               userCoords = lastKnownCoords;
-              coordsDebugRef.current = `Permission denied, last known: ${lastKnownCoords.latitude.toFixed(6)}, ${lastKnownCoords.longitude.toFixed(6)}`;
+              setStationLocationNote('Sorted by last known location (location permission off).');
             } else {
-              coordsDebugRef.current = 'Permission denied, no last known location available';
+              setStationLocationNote('Pick a station from the list (location permission off).');
             }
           } else {
-            coordsDebugRef.current = 'Permission denied, no last known location available';
+            setStationLocationNote('Pick a station from the list (location permission off).');
           }
         }
 
@@ -418,28 +620,6 @@ export default function MainScreen() {
             );
           } catch {}
         }
-      } catch (error) {
-        if (!mounted) return;
-        if (toNetworkErrorInfo(error).kind === 'cancelled') return;
-        coordsDebugRef.current = 'Could not load stations from the server';
-
-        const baseMessage = serverUrl
-          ? `Could not load stations from ${serverUrl}.`
-          : (centralServer.error ?? 'Central server URL is not configured.');
-        const friendly = toUserFacingErrorCopy(error, baseMessage);
-
-        const hints: string[] = [];
-        if (Platform.OS === 'ios' && isHttpServer) {
-          hints.push(
-            'iOS may block plain HTTP (ATS). If this is a dev build, allow insecure loads in iOS Info.plist or switch your backend to HTTPS.',
-          );
-        }
-
-        const detailSuffix = friendly.detail ? ` ${friendly.detail}` : '';
-        setStationLoadError([friendly.title + detailSuffix, ...hints].filter(Boolean).join('\n'));
-        setLocationPermission('undetermined');
-        setNearbyStations([]);
-        setSelectedStation(null);
       } finally {
         if (mounted) setIsResolvingLocation(false);
       }
@@ -449,19 +629,20 @@ export default function MainScreen() {
 
     return () => {
       mounted = false;
-      stationsAbort.abort();
       watchSubscriptionRef.current?.remove();
       watchSubscriptionRef.current = null;
     };
   }, [
+    isStationsQueryError,
+    isStationsQueryLoading,
+    reconnectEpoch,
     setIsResolvingLocation,
     setLocationPermission,
     setNearbyStations,
     setSelectedStation,
     setStations,
-    serverUrl,
-    stationRefreshTick,
-    reconnectEpoch,
+    setStationLocationNote,
+    stationsFromApi,
     updateFromGpsCoords,
   ]);
 
@@ -475,6 +656,7 @@ export default function MainScreen() {
     ({ item }: { item: StationWithDistance }) => {
       const isSelected = draftStation?.id === item.id;
       const statusColors = getStatusColors(item.status, isSelected);
+      const awayLabel = formatKmAway(item.distanceKm);
 
       return (
         <Pressable
@@ -505,9 +687,11 @@ export default function MainScreen() {
                   {item.status === 'online' ? 'Online' : 'Offline'}
                 </Text>
               </YStack>
-              <Text color={isSelected ? appColors.accent : appColors.textMuted} fontSize="$3">
-                {formatDistance(item.distanceKm)}
-              </Text>
+              {awayLabel ? (
+                <Text color={isSelected ? appColors.accent : appColors.textMuted} fontSize="$3">
+                  {awayLabel}
+                </Text>
+              ) : null}
             </XStack>
           </YStack>
         </Pressable>
@@ -518,66 +702,25 @@ export default function MainScreen() {
 
   const renderRouteItem = useCallback(
     ({ item }: { item: RouteData }) => {
-      const meta = buildBookingRouteMeta(item, draftStation?.name ?? 'Depart station');
-      const isSelected = selectedRouteId === String(item.id);
-      const isFull = item.available_seats <= 0;
-
+      if (!draftStation) return null;
       return (
-        <Pressable
-          onPress={() => !isFull && setSelectedRouteId(String(item.id))}
-          testID={`route-option-${String(item.id)}`}
-          accessibilityLabel={`Route option ${meta.destinationName}`}
-          disabled={isFull}
-          style={({ pressed }) => [
-            styles.routeCard,
-            isSelected ? styles.routeCardSelected : null,
-            isFull ? styles.routeCardDisabled : null,
-            pressed && !isFull ? styles.routeCardPressed : null,
-          ]}
-        >
-          <XStack items="center" justify="space-between" gap="$3">
-            <YStack flex={1} gap="$1.5">
-              <Text color={appColors.textPrimary} fontSize="$5" fontWeight="700">
-                {meta.destinationName}
-              </Text>
-              <Text color={appColors.textSecondary} fontSize="$3">
-                {meta.departureName} to {meta.destinationName}
-              </Text>
-            </YStack>
-            <MaterialCommunityIcons
-              name={isSelected ? 'radiobox-marked' : 'radiobox-blank'}
-              size={22}
-              color={isSelected ? appColors.accent : appColors.textMuted}
-            />
-          </XStack>
-
-          <XStack mt="$3" gap="$2" flexWrap="wrap">
-            <View style={[styles.badge, styles.badgeAccent]}>
-              <Text color={appColors.textPrimary} fontSize="$3" fontWeight="700">
-                {formatCurrency(meta.pricePerSeat)} / seat
-              </Text>
-            </View>
-            <View style={styles.badge}>
-              <Text color={appColors.textSecondary} fontSize="$3" fontWeight="700">
-                ETD {meta.etdLabel}
-              </Text>
-            </View>
-            <View style={[styles.badge, isFull ? styles.badgeDanger : null]}>
-              <Text color={isFull ? '#FFD7D7' : appColors.textSecondary} fontSize="$3" fontWeight="700">
-                {isFull ? 'Full' : `${item.available_seats} seats left`}
-              </Text>
-            </View>
-          </XStack>
-        </Pressable>
+        <DestinationQueueRow
+          stationId={draftStation.id}
+          stationName={draftStation.name}
+          item={item}
+          selectedRouteId={selectedRouteId}
+          onSelectRouteId={setSelectedRouteId}
+        />
       );
     },
-    [draftStation?.name, selectedRouteId],
+    [draftStation, selectedRouteId],
   );
 
   const latestTickets = tickets.slice(0, 3);
   const canOpenBooking = !isResolvingLocation && nearbyStations.length > 0;
-  const canContinueStation = !!draftStation;
-  const canContinueRoute = !!selectedRoute && draftStation?.status === 'online';
+  const canContinueStation = !!draftStation && draftStation.status === 'online';
+  const canContinueRoute =
+    bookingSheetStep === 'routes' && !!selectedRoute && draftStation?.status === 'online' && !routesFetchLoading;
 
   return (
     <BottomSheetModalProvider>
@@ -611,7 +754,7 @@ export default function MainScreen() {
                 </Text>
                 <Text color={appColors.textSecondary} fontSize="$3">
                   {selectedStation
-                    ? `${formatDistance(selectedStation.distanceKm)} | ${selectedStation.status}`
+                    ? stationCardSubtitle(selectedStation)
                     : isResolvingLocation
                       ? 'Resolving your closest station...'
                       : 'Select a station to start booking.'}
@@ -693,7 +836,10 @@ export default function MainScreen() {
               </Text>
             ) : null}
             <Pressable
-              onPress={() => setStationRefreshTick((value) => value + 1)}
+              onPress={() => {
+                setStationLoadError(null);
+                void refetchStations();
+              }}
               style={({ pressed }) => [styles.retryButton, pressed ? styles.buttonPressed : null]}
             >
               <Text color={appColors.textPrimary} fontSize="$3" fontWeight="700">
@@ -730,8 +876,14 @@ export default function MainScreen() {
         </XStack>
 
         <View style={styles.historyCard}>
-          <XStack items="center" justify="space-between" gap="$3">
-            <YStack gap="$1">
+          <XStack
+            width="100%"
+            items="flex-start"
+            justify="space-between"
+            gap="$3"
+            flexWrap="wrap"
+          >
+            <YStack gap="$1" style={styles.historyHeaderTextCol}>
               <Text color={appColors.textPrimary} fontSize="$6" fontWeight="800">
                 Booking history
               </Text>
@@ -739,7 +891,12 @@ export default function MainScreen() {
                 Your latest paid tickets appear here for quick access.
               </Text>
             </YStack>
-            <Pressable onPress={() => router.push('/(app)/history')} style={styles.historyLink}>
+            <Pressable
+              onPress={() => router.push('/(app)/history')}
+              accessibilityRole="button"
+              accessibilityLabel="Open full booking history"
+              style={[styles.historyLink, styles.historyLinkPill]}
+            >
               <Text color={appColors.textPrimary} fontSize="$3" fontWeight="700">
                 Open
               </Text>
@@ -780,142 +937,197 @@ export default function MainScreen() {
           index={0}
           snapPoints={stationSnapPoints}
           enableDynamicSizing={false}
+          enablePanDownToClose
+          topInset={insets.top}
           backgroundStyle={{ backgroundColor: appColors.surfaceStrong }}
           handleIndicatorStyle={{ backgroundColor: appColors.borderStrong }}
           backdropComponent={(props) => (
-            <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} />
-          )}
-        >
-          <YStack flex={1} px="$4" pt="$2" pb="$5">
-            <Text color={appColors.textPrimary} fontSize="$7" fontWeight="800">
-              Confirm depart station
-            </Text>
-            <Text mt="$1" color={appColors.textSecondary} fontSize="$4">
-              Start from your assigned station, or switch it before choosing the route.
-            </Text>
-            <Text mt="$2" mb="$3" color={appColors.textMuted} fontSize="$2">
-              {coordsDebugRef.current}
-            </Text>
-
-            <BottomSheetFlatList<StationWithDistance>
-              data={visibleNearbyStations}
-              keyExtractor={(item: StationWithDistance) => item.id}
-              renderItem={renderStationItem}
-              contentContainerStyle={{ paddingBottom: 112 }}
-              showsVerticalScrollIndicator={false}
-              ListFooterComponent={renderStationListFooter}
-              ListEmptyComponent={
-                isResolvingLocation ? (
-                  <View style={{ paddingTop: 12, paddingBottom: 80, gap: 12 }}>
-                    {[0, 1, 2, 3].map((index) => (
-                      <View key={index} style={styles.skeletonCard} />
-                    ))}
-                  </View>
-                ) : (
-                  <View style={styles.centerState}>
-                    <Text color={appColors.textSecondary} fontSize="$4" style={styles.centeredText}>
-                      No stations available yet.
-                    </Text>
-                  </View>
-                )
-              }
+            <BottomSheetBackdrop
+              {...props}
+              appearsOnIndex={0}
+              disappearsOnIndex={-1}
+              pressBehavior="close"
+              opacity={0.55}
             />
-
-            <Pressable
-              disabled={!canContinueStation}
-              onPress={handleStationNext}
-              testID="station-next"
-              style={({ pressed }) => [
-                styles.sheetButton,
-                !canContinueStation ? styles.buttonDisabled : null,
-                pressed && canContinueStation ? styles.buttonPressed : null,
-              ]}
-            >
-              <Text color={appColors.bg} fontSize="$4" fontWeight="800">
-                Next
-              </Text>
-            </Pressable>
-          </YStack>
-        </BottomSheetModal>
-
-        <BottomSheetModal
-          ref={routeSheetRef}
-          index={0}
-          snapPoints={routeSnapPoints}
-          enableDynamicSizing={false}
-          backgroundStyle={{ backgroundColor: appColors.surfaceStrong }}
-          handleIndicatorStyle={{ backgroundColor: appColors.borderStrong }}
-          backdropComponent={(props) => (
-            <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} />
           )}
+          onDismiss={resetBookingModalInternals}
+          onChange={(index) => {
+            stationSnapIndexRef.current = index;
+            syncTabBarToBookingSheets();
+          }}
         >
-          <YStack flex={1} px="$4" pt="$2" pb="$5">
-            <Text color={appColors.textPrimary} fontSize="$7" fontWeight="800">
-              Select your destination
-            </Text>
-            <Text mt="$1" color={appColors.textSecondary} fontSize="$4">
-              Showing available routes from {draftStation?.name ?? 'the selected station'}.
-            </Text>
+          <YStack flex={1} px="$4" pt="$2" pb={sheetStickyFooterBottom + 8}>
+            <XStack mb="$2" width="100%" justify="space-between" items="center">
+              {bookingSheetStep === 'routes' ? (
+                <Pressable
+                  onPress={handleBackToStationStep}
+                  accessibilityRole="button"
+                  accessibilityLabel="Back to departure station selection"
+                  hitSlop={12}
+                  style={styles.sheetNavPill}
+                >
+                  <XStack items="center" gap="$1.5">
+                    <MaterialCommunityIcons name="arrow-left" size={20} color={appColors.textPrimary} />
+                    <Text color={appColors.textPrimary} fontSize="$3" fontWeight="700">
+                      Back
+                    </Text>
+                  </XStack>
+                </Pressable>
+              ) : (
+                <View style={styles.sheetHeaderSpacer} />
+              )}
+              <Pressable
+                onPress={() => stationSheetRef.current?.dismiss()}
+                accessibilityRole="button"
+                accessibilityLabel="Close booking sheet"
+                hitSlop={12}
+                style={styles.sheetCloseButton}
+              >
+                <MaterialCommunityIcons name="close" size={26} color={appColors.textPrimary} />
+              </Pressable>
+            </XStack>
 
-            {draftStation?.status === 'offline' ? (
-              <View style={styles.centerState}>
-                <Text color={appColors.textPrimary} fontSize="$5" fontWeight="700" style={styles.centeredText}>
-                  This station is offline right now.
+            {bookingSheetStep === 'station' ? (
+              <>
+                <Text color={appColors.textPrimary} fontSize="$7" fontWeight="800">
+                  Confirm depart station
                 </Text>
-                <Text color={appColors.textSecondary} fontSize="$4" style={styles.centeredText}>
-                  Go back and pick an online station to continue.
+                <Text mt="$1" color={appColors.textSecondary} fontSize="$4">
+                  Start from your assigned station, or switch it before loading live destinations.
                 </Text>
-              </View>
-            ) : isLoadingRoutes ? (
-              <View style={styles.centerState}>
-                <ActivityIndicator color={appColors.accent} />
-                <Text color={appColors.textSecondary} fontSize="$4">
-                  Loading available routes...
-                </Text>
-              </View>
-            ) : isRouteError ? (
-              <View style={styles.centerState}>
-                <Text color={appColors.textPrimary} fontSize="$4" style={styles.centeredText}>
-                  Could not load routes for this station.
-                </Text>
-                <Pressable onPress={() => void refetchRoutes()} style={styles.historyLink}>
-                  <Text color={appColors.textPrimary} fontSize="$3" fontWeight="700">
-                    Retry
+                {stationLocationNote ? (
+                  <Text mt="$2" mb="$3" color={appColors.textMuted} fontSize="$2">
+                    {stationLocationNote}
+                  </Text>
+                ) : (
+                  <View style={{ marginBottom: 12 }} />
+                )}
+
+                <BottomSheetFlatList<StationWithDistance>
+                  style={{ flex: 1 }}
+                  data={visibleNearbyStations}
+                  keyExtractor={(item: StationWithDistance) => item.id}
+                  renderItem={renderStationItem}
+                  contentContainerStyle={{ flexGrow: 1, paddingBottom: sheetFlatListPaddingBottom }}
+                  showsVerticalScrollIndicator={false}
+                  ListFooterComponent={renderStationListFooter}
+                  ListEmptyComponent={
+                    isResolvingLocation ? (
+                      <View style={[styles.centerState, { paddingTop: 28, paddingBottom: 72 }]}>
+                        <ActivityIndicator color={appColors.accent} />
+                        <Text color={appColors.textSecondary} fontSize="$4" style={styles.centeredText}>
+                          Loading stations…
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={styles.centerState}>
+                        <Text color={appColors.textSecondary} fontSize="$4" style={styles.centeredText}>
+                          No stations available yet.
+                        </Text>
+                      </View>
+                    )
+                  }
+                />
+
+                <Pressable
+                  disabled={!canContinueStation}
+                  pointerEvents={!canContinueStation ? 'none' : 'auto'}
+                  onPress={handleStationNext}
+                  testID="station-next"
+                  style={({ pressed }) => [
+                    styles.sheetButton,
+                    { bottom: sheetStickyFooterBottom },
+                    !canContinueStation ? styles.buttonDisabled : null,
+                    pressed && canContinueStation ? styles.buttonPressed : null,
+                  ]}
+                >
+                  <Text color={appColors.bg} fontSize="$4" fontWeight="800">
+                    Next
                   </Text>
                 </Pressable>
-              </View>
+              </>
             ) : (
-              <BottomSheetFlatList<RouteData>
-                data={visibleRoutes}
-                keyExtractor={(item: RouteData) => String(item.id)}
-                renderItem={renderRouteItem}
-                contentContainerStyle={{ paddingVertical: 16, paddingBottom: 112, gap: 12 }}
-                ListEmptyComponent={
-                  <View style={styles.centerState}>
-                    <Text color={appColors.textSecondary} fontSize="$4" style={styles.centeredText}>
-                      No routes are available right now for this depart station.
+              <>
+                <Text color={appColors.textPrimary} fontSize="$7" fontWeight="800">
+                  Pick your destination
+                </Text>
+                <Text mt="$1" color={appColors.textSecondary} fontSize="$4">
+                  Queues loaded from{' '}
+                  <Text fontWeight="800" color={appColors.textPrimary}>
+                    {draftStation?.name ?? 'your station'}
+                  </Text>{' '}
+                  via Wasla — showing vehicles reporting available seats right now.
+                </Text>
+                <Text mt="$2" color={appColors.textMuted} fontSize="$2">
+                  {realtimeStatus === 'connected'
+                    ? 'Seat and vehicle counts refresh live while this sheet is open.'
+                    : 'Connect to Wasla (Live tab) for automatic queue refreshes when vehicles change.'}
+                </Text>
+
+                {routesFetchLoading ? (
+                  <View style={[styles.centerState, styles.sheetRoutesBody]}>
+                    <ActivityIndicator size="large" color={appColors.accent} />
+                    <Text mt="$4" color={appColors.textSecondary} fontSize="$4" style={styles.centeredText}>
+                      Loading queues from this depart station…
                     </Text>
                   </View>
-                }
-                showsVerticalScrollIndicator={false}
-                ListFooterComponent={renderRoutesListFooter}
-              />
-            )}
+                ) : routesFetchError ? (
+                  <View style={[styles.centerState, styles.sheetRoutesBody]}>
+                    <Text color={appColors.textPrimary} fontSize="$4" style={styles.centeredText}>
+                      {routesFetchError}
+                    </Text>
+                    <Pressable
+                      onPress={() => draftStation && void fetchQueuesForDepartStation(draftStation)}
+                      style={styles.historyLink}
+                    >
+                      <Text color={appColors.textPrimary} fontSize="$3" fontWeight="700">
+                        Retry
+                      </Text>
+                    </Pressable>
+                  </View>
+                ) : (
+                  <BottomSheetFlatList<RouteData>
+                    style={{ flex: 1 }}
+                    data={visibleRoutes}
+                    keyExtractor={(item: RouteData) => String(item.id)}
+                    renderItem={renderRouteItem}
+                    contentContainerStyle={{
+                      flexGrow: 1,
+                      paddingTop: 16,
+                      paddingBottom: sheetFlatListPaddingBottom,
+                      gap: 12,
+                    }}
+                    ListEmptyComponent={
+                      <View style={styles.centerState}>
+                        <Text color={appColors.textSecondary} fontSize="$4" style={styles.centeredText}>
+                          No queued destinations available right now. Try again in a moment or pick another depart
+                          station.
+                        </Text>
+                      </View>
+                    }
+                    showsVerticalScrollIndicator={false}
+                    ListFooterComponent={renderRoutesListFooter}
+                  />
+                )}
 
-            <Pressable
-              disabled={!canContinueRoute}
-              onPress={handleRouteNext}
-              testID="route-next"
-              style={({ pressed }) => [
-                styles.sheetButton,
-                !canContinueRoute ? styles.buttonDisabled : null,
-                pressed && canContinueRoute ? styles.buttonPressed : null,
-              ]}
-            >
-              <Text color={appColors.bg} fontSize="$4" fontWeight="800">
-                Next
-              </Text>
-            </Pressable>
+                <Pressable
+                  disabled={!canContinueRoute}
+                  pointerEvents={!canContinueRoute ? 'none' : 'auto'}
+                  onPress={handleRouteNext}
+                  testID="route-next"
+                  style={({ pressed }) => [
+                    styles.sheetButton,
+                    { bottom: sheetStickyFooterBottom },
+                    !canContinueRoute ? styles.buttonDisabled : null,
+                    pressed && canContinueRoute ? styles.buttonPressed : null,
+                  ]}
+                >
+                  <Text color={appColors.bg} fontSize="$4" fontWeight="800">
+                    Next
+                  </Text>
+                </Pressable>
+              </>
+            )}
           </YStack>
         </BottomSheetModal>
       </YStack>
@@ -975,7 +1187,8 @@ const styles = StyleSheet.create({
     padding: 18,
   },
   historyCard: {
-    flex: 1,
+    overflow: 'hidden',
+    alignSelf: 'stretch',
     borderRadius: 26,
     borderWidth: 1,
     borderColor: appColors.border,
@@ -989,6 +1202,16 @@ const styles = StyleSheet.create({
     backgroundColor: appColors.surface,
     paddingHorizontal: 14,
     paddingVertical: 10,
+  },
+  /** Keep “Open” fully visible — never shrink the pill beside wrapping title copy */
+  historyLinkPill: {
+    flexShrink: 0,
+    alignSelf: 'flex-start',
+  },
+  historyHeaderTextCol: {
+    flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
   },
   emptyHistory: {
     borderRadius: 20,
@@ -1010,40 +1233,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
-  routeCard: {
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: appColors.border,
-    backgroundColor: appColors.surface,
-    padding: 18,
-  },
-  routeCardSelected: {
-    borderColor: appColors.accentGlow,
-    backgroundColor: appColors.accentSoft,
-  },
-  routeCardDisabled: {
-    opacity: 0.55,
-  },
-  routeCardPressed: {
-    opacity: 0.92,
-    transform: [{ scale: 0.99 }],
-  },
-  badge: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: appColors.borderStrong,
-    backgroundColor: appColors.surfaceStrong,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  badgeAccent: {
-    borderColor: appColors.accentGlow,
-    backgroundColor: appColors.accentSoft,
-  },
-  badgeDanger: {
-    borderColor: 'rgba(255, 111, 111, 0.4)',
-    backgroundColor: 'rgba(120, 25, 25, 0.35)',
-  },
   retryButton: {
     marginTop: 14,
     alignSelf: 'flex-start',
@@ -1064,6 +1253,27 @@ const styles = StyleSheet.create({
     backgroundColor: appColors.surfaceStrong,
     paddingHorizontal: 18,
     paddingVertical: 12,
+  },
+  sheetNavPill: {
+    alignSelf: 'flex-start',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: appColors.borderStrong,
+    backgroundColor: appColors.surfaceStrong,
+  },
+  sheetHeaderSpacer: {
+    width: 88,
+  },
+  sheetRoutesBody: {
+    flex: 1,
+    minHeight: 240,
+  },
+  sheetCloseButton: {
+    padding: 6,
+    borderRadius: 999,
+    marginRight: -2,
   },
   sheetButton: {
     position: 'absolute',
@@ -1092,13 +1302,5 @@ const styles = StyleSheet.create({
   },
   centeredText: {
     textAlign: 'center',
-  },
-  skeletonCard: {
-    height: 86,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: appColors.border,
-    backgroundColor: appColors.surface,
-    opacity: 0.65,
   },
 });

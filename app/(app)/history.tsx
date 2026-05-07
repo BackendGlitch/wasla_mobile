@@ -1,6 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text, XStack, YStack } from 'tamagui';
 import { formatCurrency, formatIssuedAt } from '../../src/lib/bookingFlow';
 import { useBookingStore } from '../../src/store';
@@ -8,11 +9,27 @@ import { appColors } from '../../src/theme/appTheme';
 
 export default function HistoryScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const tickets = useBookingStore((state) => state.tickets);
+  const contentPadTop = Math.max(insets.top + 16, 56);
+
+  const navigateBack = () => {
+    if (router.canGoBack()) router.back();
+    else router.replace('/(app)');
+  };
 
   return (
     <YStack flex={1} bg={appColors.bg}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingTop: contentPadTop }]}>
+        <Pressable onPress={navigateBack} style={styles.backButton}>
+          <XStack items="center" gap="$2">
+            <MaterialCommunityIcons name="arrow-left" size={20} color={appColors.textPrimary} />
+            <Text color={appColors.textPrimary} fontSize="$4" fontWeight="700">
+              Back
+            </Text>
+          </XStack>
+        </Pressable>
+
         <YStack gap="$5">
           <YStack gap="$2">
             <Text color={appColors.textMuted} fontSize="$2" letterSpacing={0.7}>
@@ -95,8 +112,17 @@ export default function HistoryScreen() {
 const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 20,
-    paddingTop: 56,
     paddingBottom: 140,
+  },
+  backButton: {
+    alignSelf: 'flex-start',
+    marginBottom: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: appColors.borderStrong,
+    backgroundColor: appColors.surfaceStrong,
   },
   emptyState: {
     minHeight: 340,

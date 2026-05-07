@@ -1,4 +1,5 @@
 import { io, type Socket } from 'socket.io-client';
+import { useBookingRoutesLiveStore } from '../store/bookingRoutesLiveStore';
 import { useRealtimeStore } from '../store/realtimeStore';
 import { useStationStore } from '../store/stationStore';
 import { resolveCentralServerUrl } from './serverConfig';
@@ -145,6 +146,16 @@ export const initCentralRealtime = (): Socket | null => {
 
     useStationStore.getState().applyStationStatusUpdate(stationId, status);
   });
+
+  socket.on(
+    'station.routes.updated',
+    (payload: { station_id?: string; routes?: unknown[]; updated_at?: string }) => {
+      const stationId =
+        typeof payload?.station_id === 'string' ? payload.station_id.trim() : '';
+      if (!stationId || !Array.isArray(payload.routes)) return;
+      useBookingRoutesLiveStore.getState().applyLiveRoutesPayload(stationId, payload.routes);
+    },
+  );
 
   centralSocket = socket;
   return socket;

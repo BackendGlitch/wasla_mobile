@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { XStack, Text } from 'tamagui';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,6 +19,16 @@ const tabs: TabConfig[] = [
   { key: 'settings', label: 'Settings', icon: 'cog-outline', activeIcon: 'cog' },
 ];
 
+/** Custom tab bars don’t receive a wrapper View with `tabBarStyle`; mirror RN’s semantics so `setOptions({ tabBarStyle })` hides the bar. */
+function isTabBarStyleHidden(style: StyleProp<ViewStyle> | undefined): boolean {
+  const flat = style != null ? StyleSheet.flatten(style) : undefined;
+  if (!flat) return false;
+  if ((flat.opacity as number) === 0) return true;
+  if (flat.display === 'none') return true;
+  if (typeof flat.height === 'number' && flat.height === 0) return true;
+  return false;
+}
+
 const colors = {
   bar: 'rgba(14, 16, 22, 0.5)',
   barBorder: 'rgba(255,255,255,0.08)',
@@ -31,11 +41,15 @@ const colors = {
   shadow: 'rgba(0,0,0,0.5)',
 };
 
-export default function GlossyTabBar({ state, navigation }: BottomTabBarProps) {
+export default function GlossyTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const bottomOffset = Math.max(18, insets.bottom + 8);
   const activeRouteName = state.routes[state.index]?.name;
   const shouldShowBar = tabs.some((tab) => tab.key === activeRouteName);
+  const focusedRoute = state.routes[state.index];
+  const focusedTabBarStyle = focusedRoute
+    ? descriptors[focusedRoute.key]?.options.tabBarStyle
+    : undefined;
   const realtimeStatus = useRealtimeStore((s) => s.status);
 
   const liveLabel =
@@ -53,18 +67,13 @@ export default function GlossyTabBar({ state, navigation }: BottomTabBarProps) {
 
   if (!shouldShowBar) return null;
 
+  if (isTabBarStyleHidden(focusedTabBarStyle as StyleProp<ViewStyle>)) return null;
+
   return (
     <View style={[styles.container, { bottom: bottomOffset }]} pointerEvents="box-none">
       <View style={styles.barShell}>
         <BlurView intensity={32} tint="dark" style={styles.blurLayer} pointerEvents="none" />
         <View style={styles.bottomShade} pointerEvents="none" />
-        <View style={styles.liveWrap} pointerEvents="none">
-          <View style={[styles.liveDot, { backgroundColor: liveDot }]} />
-          <Text fontSize="$1" fontWeight="800" style={styles.liveText}>
-            {liveLabel}
-          </Text>
-        </View>
-
         <XStack style={styles.row}>
           {tabs.map((tab) => {
             const routeIndex = state.routes.findIndex((r) => r.name === tab.key);

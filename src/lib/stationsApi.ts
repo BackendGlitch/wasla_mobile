@@ -16,7 +16,14 @@ export interface StationDetails extends Station {
 }
 
 function toNullableNumber(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const n = Number(trimmed);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
 }
 
 function toStationStatus(value: unknown): StationStatus {
@@ -25,8 +32,15 @@ function toStationStatus(value: unknown): StationStatus {
 
 function normalizeStation(raw: unknown): Station {
   const record = typeof raw === 'object' && raw !== null ? raw as Record<string, unknown> : {};
+  const idRaw = record.id;
+  const fallbackId =
+    typeof idRaw === 'string'
+      ? idRaw
+      : typeof record.station_id === 'string'
+        ? record.station_id
+        : '';
   return {
-    id: typeof record.id === 'string' ? record.id : '',
+    id: fallbackId,
     name: typeof record.name === 'string' ? record.name : 'Unknown station',
     lat: toNullableNumber(record.lat),
     lng: toNullableNumber(record.lng),

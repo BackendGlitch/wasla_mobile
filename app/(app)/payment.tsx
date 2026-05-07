@@ -1,16 +1,40 @@
+import { useState } from 'react';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
+import dayjs from 'dayjs';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text, XStack, YStack } from 'tamagui';
-import { createTicketCode, formatCurrency } from '../../src/lib/bookingFlow';
+import { isAxiosError } from 'axios';
+import { confirmBookingInApp } from '../../src/lib/bookingApi';
+import { formatCurrency } from '../../src/lib/bookingFlow';
+import { toUserFacingErrorCopy } from '../../src/lib/networkErrors';
 import { singleRouteParam } from '../../src/lib/postAuthFlow';
 import { useBookingStore } from '../../src/store';
 import { appColors } from '../../src/theme/appTheme';
 
 export default function PaymentScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const addTicket = useBookingStore((state) => state.addTicket);
+  const contentPadTop = Math.max(insets.top + 16, 56);
+  const [confirming, setConfirming] = useState(false);
+
+  const navigateBack = () => {
+    if (router.canGoBack()) router.back();
+    else router.replace('/(app)');
+  };
   const params = useLocalSearchParams<{
+    centralBookingId?: string | string[];
     stationId?: string | string[];
     stationName?: string | string[];
     routeId?: string | string[];
@@ -23,9 +47,9 @@ export default function PaymentScreen() {
     totalPrice?: string | string[];
     etdIso?: string | string[];
     etdLabel?: string | string[];
-    vehiclePlate?: string | string[];
   }>();
 
+  const centralBookingId = singleRouteParam(params.centralBookingId) ?? '';
   const stationId = singleRouteParam(params.stationId) ?? '';
   const stationName = singleRouteParam(params.stationName) ?? 'Depart station';
   const routeId = singleRouteParam(params.routeId) ?? '';
@@ -38,42 +62,80 @@ export default function PaymentScreen() {
   const totalPrice = Number(singleRouteParam(params.totalPrice) ?? 0) || 0;
   const etdIso = singleRouteParam(params.etdIso) ?? new Date().toISOString();
   const etdLabel = singleRouteParam(params.etdLabel) ?? '--:--';
-  const vehiclePlate = singleRouteParam(params.vehiclePlate) ?? 'Pending';
 
-  const handleConfirmPayment = () => {
-    const id = createTicketCode();
-    const issuedAt = new Date().toISOString();
+  const handleConfirmPayment = async () => {
+    if (!centralBookingId.trim()) {
+      Alert.alert(
+        'Missing booking',
+        'Go back one step and tap Continue again so we can hold seats at the station.',
+      );
+      return;
+    }
+    if (confirming) return;
 
-    addTicket({
-      id,
-      qrValue: id,
-      issuedAt,
-      paymentStatus: 'confirmed',
-      stationId,
-      stationName,
-      routeId,
-      routeName,
-      departureName,
-      destinationName,
-      availableSeats,
-      seatCount,
-      pricePerSeat,
-      totalPrice,
-      etdIso,
-      etdLabel,
-      vehiclePlate,
-    });
+    setConfirming(true);
+    try {
+      const data = await confirmBookingInApp(centralBookingId.trim());
+      const t = data.ticket;
+      if (!t?.id || !t.qr_payload) {
+        throw new Error('Invalid ticket response from server.');
+      }
 
-    router.replace({
-      pathname: '/(app)/ticket',
-      params: { ticketId: id },
-    });
+      const plate =
+        (typeof t.vehicle_plate === 'string' && t.vehicle_plate.trim()) || 'Pending';
+      const etdFromServer = t.etd_timestamp
+        ? dayjs(t.etd_timestamp).toISOString()
+        : etdIso;
+      const etdLabelFromServer = t.etd_timestamp
+        ? dayjs(t.etd_timestamp).format('HH:mm')
+        : etdLabel;
+      const issuedAt = t.created_at
+        ? dayjs(t.created_at).toISOString()
+        : new Date().toISOString();
+
+      addTicket({
+        id: t.id,
+        qrValue: t.qr_payload,
+        issuedAt,
+        paymentStatus: 'confirmed',
+        stationId: t.station_id ?? stationId,
+        stationName,
+        routeId,
+        routeName,
+        departureName,
+        destinationName,
+        availableSeats,
+        seatCount: typeof t.seats_booked === 'number' ? t.seats_booked : seatCount,
+        pricePerSeat,
+        totalPrice,
+        etdIso: etdFromServer,
+        etdLabel: etdLabelFromServer,
+        vehiclePlate: plate,
+      });
+
+      router.replace({
+        pathname: '/(app)/ticket',
+        params: { ticketId: t.id },
+      });
+    } catch (error: unknown) {
+      if (isAxiosError(error) && error.response?.status === 401) {
+        Alert.alert('Sign in required', 'Please sign in to complete this booking.');
+        return;
+      }
+      const friendly = toUserFacingErrorCopy(error, 'Could not confirm payment with the station.');
+      Alert.alert(
+        friendly.title,
+        (friendly.detail ?? '').trim() || 'Please try again in a moment.',
+      );
+    } finally {
+      setConfirming(false);
+    }
   };
 
   return (
     <YStack flex={1} bg={appColors.bg}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <Pressable onPress={() => router.back()} style={styles.backButton}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingTop: contentPadTop }]}>
+        <Pressable onPress={navigateBack} style={styles.backButton}>
           <XStack items="center" gap="$2">
             <MaterialCommunityIcons name="arrow-left" size={20} color={appColors.textPrimary} />
             <Text color={appColors.textPrimary} fontSize="$4" fontWeight="700">
@@ -90,9 +152,6 @@ export default function PaymentScreen() {
             <Text color={appColors.textPrimary} fontSize="$10" fontWeight="800">
               Confirm trip and pay
             </Text>
-            <Text color={appColors.textSecondary} fontSize="$4">
-              This is a placeholder gateway screen until Konnect or Flouci is connected.
-            </Text>
           </YStack>
 
           <View style={styles.paymentCard}>
@@ -101,29 +160,29 @@ export default function PaymentScreen() {
             </Text>
 
             <YStack mt="$4" gap="$3">
-              <SummaryRow label="Depart station" value={stationName} />
-              <SummaryRow label="Arrival station" value={destinationName} />
+              <SummaryRow label="Destination" value={destinationName} />
               <SummaryRow label="Number of seats" value={`${seatCount}`} />
-              <SummaryRow label="ETD" value={etdLabel} />
-              <SummaryRow label="Vehicle LP" value={vehiclePlate} />
+              <MaskedVehicleLpRow />
               <SummaryRow label="Price" value={formatCurrency(totalPrice)} highlight />
             </YStack>
           </View>
 
-          <View style={styles.gatewayCard}>
-            <MaterialCommunityIcons name="credit-card-check-outline" size={28} color={appColors.accent} />
-            <Text mt="$3" color={appColors.textPrimary} fontSize="$5" fontWeight="700">
-              Payment gateway placeholder
-            </Text>
-            <Text mt="$2" color={appColors.textSecondary} fontSize="$4" style={styles.centerText}>
-              When your payment integration is ready, this screen can redirect to the real provider and return here on success.
-            </Text>
-          </View>
-
-          <Pressable onPress={handleConfirmPayment} style={({ pressed }) => [styles.primaryButton, pressed ? styles.buttonPressed : null]}>
-            <Text color={appColors.bg} fontSize="$4" fontWeight="800">
-              Mark payment as confirmed
-            </Text>
+          <Pressable
+            disabled={confirming}
+            onPress={() => void handleConfirmPayment()}
+            style={({ pressed }) => [
+              styles.primaryButton,
+              confirming ? styles.disabledControl : null,
+              pressed && !confirming ? styles.buttonPressed : null,
+            ]}
+          >
+            {confirming ? (
+              <ActivityIndicator color={appColors.bg} />
+            ) : (
+              <Text color={appColors.bg} fontSize="$4" fontWeight="800">
+                Mark payment as confirmed
+              </Text>
+            )}
           </Pressable>
         </YStack>
       </ScrollView>
@@ -144,10 +203,42 @@ function SummaryRow({ label, value, highlight = false }: { label: string; value:
   );
 }
 
+/** Do not render a real plate here — assignment comes from the station only after confirm. */
+function MaskedVehicleLpRow() {
+  return (
+    <YStack gap="$1.5">
+      <XStack items="center" justify="space-between" gap="$3">
+        <Text color={appColors.textMuted} fontSize="$3">
+          Vehicle LP
+        </Text>
+        <View style={styles.lpMaskShell}>
+          <Text
+            selectable={false}
+            color={appColors.textPrimary}
+            fontSize="$4"
+            fontWeight="700"
+            style={styles.lpUnderlayText}
+          >
+            ···· ···· ····
+          </Text>
+          <BlurView
+            experimentalBlurMethod={Platform.OS === 'android' ? 'dimezisBlurView' : undefined}
+            intensity={Platform.OS === 'android' ? 70 : 50}
+            tint="dark"
+            style={styles.lpBlur}
+          />
+        </View>
+      </XStack>
+      <Text color={appColors.textMuted} fontSize="$2">
+        The real license plate is loaded from the station after you confirm payment.
+      </Text>
+    </YStack>
+  );
+}
+
 const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 20,
-    paddingTop: 56,
     paddingBottom: 48,
     gap: 28,
   },
@@ -168,13 +259,25 @@ const styles = StyleSheet.create({
     backgroundColor: '#143C5C',
     padding: 20,
   },
-  gatewayCard: {
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: appColors.accentGlowSoft,
-    backgroundColor: appColors.surfaceStrong,
-    padding: 24,
-    alignItems: 'center',
+  lpMaskShell: {
+    position: 'relative',
+    minWidth: 120,
+    maxWidth: '62%',
+    borderRadius: 8,
+    overflow: 'hidden',
+    alignSelf: 'flex-end',
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
+  lpUnderlayText: {
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    textAlign: 'right',
+    letterSpacing: 2,
+  },
+  lpBlur: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 8,
   },
   primaryButton: {
     borderRadius: 18,
@@ -183,11 +286,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  disabledControl: {
+    opacity: 0.45,
+  },
   buttonPressed: {
     opacity: 0.92,
     transform: [{ scale: 0.99 }],
-  },
-  centerText: {
-    textAlign: 'center',
   },
 });

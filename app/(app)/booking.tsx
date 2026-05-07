@@ -1,16 +1,27 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text, XStack, YStack } from 'tamagui';
+import { isAxiosError } from 'axios';
+import { createBooking } from '../../src/lib/bookingApi';
 import { formatCurrency } from '../../src/lib/bookingFlow';
+import { toUserFacingErrorCopy } from '../../src/lib/networkErrors';
 import { singleRouteParam } from '../../src/lib/postAuthFlow';
-import { useBookingStore } from '../../src/store';
+import { useBookingRoutesLiveStore, useBookingStore, useStationStore } from '../../src/store';
 import { appColors } from '../../src/theme/appTheme';
 
 export default function BookingScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const setDraft = useBookingStore((state) => state.setDraft);
+  const contentPadTop = Math.max(insets.top + 16, 56);
+
+  const navigateBack = () => {
+    if (router.canGoBack()) router.back();
+    else router.replace('/(app)');
+  };
   const params = useLocalSearchParams<{
     routeId?: string | string[];
     routeName?: string | string[];
@@ -22,35 +33,52 @@ export default function BookingScreen() {
     pricePerSeat?: string | string[];
     etdIso?: string | string[];
     etdLabel?: string | string[];
-    vehiclePlate?: string | string[];
   }>();
 
-  const stationId = singleRouteParam(params.stationId) ?? '';
-  const stationName = singleRouteParam(params.stationName) ?? 'Depart station';
+  /** Router params can drop on some navigations — fall back to the station already selected on Home. */
+  const selectedStation = useStationStore((s) => s.selectedStation);
+  const stationIdParam = singleRouteParam(params.stationId) ?? '';
+  const stationId =
+    stationIdParam.trim() || selectedStation?.id?.trim() || '';
+  const stationName =
+    (singleRouteParam(params.stationName) ?? '').trim() ||
+    selectedStation?.name?.trim() ||
+    'Depart station';
   const routeId = singleRouteParam(params.routeId) ?? '';
   const routeName = singleRouteParam(params.routeName) ?? 'Selected route';
   const departureName = singleRouteParam(params.departureName) ?? stationName;
   const destinationName = singleRouteParam(params.destinationName) ?? routeName;
   const pricePerSeat = Number(singleRouteParam(params.pricePerSeat) ?? 0) || 0;
-  const availableSeats = Number(singleRouteParam(params.availableSeats) ?? 0) || 0;
+  const availableSeatsParam = Number(singleRouteParam(params.availableSeats) ?? 0) || 0;
   const etdIso = singleRouteParam(params.etdIso) ?? new Date().toISOString();
   const etdLabel = singleRouteParam(params.etdLabel) ?? '--:--';
-  const vehiclePlate = singleRouteParam(params.vehiclePlate) ?? 'Pending';
-  const [seatCount, setSeatCount] = useState(availableSeats > 0 ? 1 : 0);
+
+  const liveSeats = useBookingRoutesLiveStore(
+    useCallback(
+      (s) => (stationId && routeId ? s.metricsByStation[stationId]?.[routeId]?.available_seats : undefined),
+      [stationId, routeId],
+    ),
+  );
+
+  const availableSeatsLive =
+    typeof liveSeats === 'number' ? liveSeats : availableSeatsParam;
+
+  const [seatCount, setSeatCount] = useState(availableSeatsLive > 0 ? 1 : 0);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (availableSeats <= 0) {
+    if (availableSeatsLive <= 0) {
       setSeatCount(0);
       return;
     }
     setSeatCount((current) => {
       if (current <= 0) return 1;
-      return Math.min(current, availableSeats);
+      return Math.min(current, availableSeatsLive);
     });
-  }, [availableSeats]);
+  }, [availableSeatsLive]);
 
   const totalPrice = useMemo(() => seatCount * pricePerSeat, [pricePerSeat, seatCount]);
-  const canContinue = availableSeats > 0 && seatCount > 0;
+  const canContinue = availableSeatsLive > 0 && seatCount > 0;
 
   useEffect(() => {
     if (!canContinue) return;
@@ -62,16 +90,16 @@ export default function BookingScreen() {
       routeName,
       departureName,
       destinationName,
-      availableSeats,
+      availableSeats: availableSeatsLive,
       seatCount,
       pricePerSeat,
       totalPrice,
       etdIso,
       etdLabel,
-      vehiclePlate,
+      vehiclePlate: 'Pending',
     });
   }, [
-    availableSeats,
+    availableSeatsLive,
     canContinue,
     departureName,
     destinationName,
@@ -85,36 +113,78 @@ export default function BookingScreen() {
     stationId,
     stationName,
     totalPrice,
-    vehiclePlate,
   ]);
 
-  const handleContinue = () => {
-    if (!canContinue) return;
+  const handleContinue = async () => {
+    if (!canContinue || submitting) return;
 
-    router.push({
-      pathname: '/(app)/payment',
-      params: {
-        stationId,
-        stationName,
-        routeId,
-        routeName,
-        departureName,
-        destinationName,
-        availableSeats: String(availableSeats),
-        seatCount: String(seatCount),
-        pricePerSeat: String(pricePerSeat),
-        totalPrice: String(totalPrice),
-        etdIso,
-        etdLabel,
-        vehiclePlate,
-      },
-    });
+    const sid = stationId.trim();
+    const rid = String(routeId).trim();
+    if (!sid || !rid) {
+      Alert.alert(
+        'Cannot continue',
+        'Missing station or route. Go back to the booking sheet and pick your depart station and destination again.',
+      );
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const res = await createBooking({
+        station_id: sid,
+        stationId: sid,
+        destination_id: rid,
+        destinationId: rid,
+        seats_booked: seatCount,
+      });
+      const centralBookingId =
+        typeof res?.booking_id === 'string'
+          ? res.booking_id
+          : typeof res?.bookingId === 'string'
+            ? res.bookingId
+            : '';
+
+      if (!centralBookingId) {
+        throw new Error('Server did not return a booking reference.');
+      }
+
+      router.push({
+        pathname: '/(app)/payment',
+        params: {
+          centralBookingId,
+          stationId,
+          stationName,
+          routeId,
+          routeName,
+          departureName,
+          destinationName,
+          availableSeats: String(availableSeatsLive),
+          seatCount: String(seatCount),
+          pricePerSeat: String(pricePerSeat),
+          totalPrice: String(totalPrice),
+          etdIso,
+          etdLabel,
+        },
+      });
+    } catch (error: unknown) {
+      if (isAxiosError(error) && error.response?.status === 401) {
+        Alert.alert('Sign in required', 'Please sign in to reserve seats.');
+        return;
+      }
+      const friendly = toUserFacingErrorCopy(error, 'Could not hold seats at this station.');
+      Alert.alert(
+        friendly.title,
+        (friendly.detail ?? '').trim() || 'Please try again in a moment.',
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
     <YStack flex={1} bg={appColors.bg}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <Pressable onPress={() => router.back()} style={styles.backButton}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingTop: contentPadTop }]}>
+        <Pressable onPress={navigateBack} style={styles.backButton}>
           <XStack items="center" gap="$2">
             <MaterialCommunityIcons name="arrow-left" size={20} color={appColors.textPrimary} />
             <Text color={appColors.textPrimary} fontSize="$4" fontWeight="700">
@@ -124,21 +194,59 @@ export default function BookingScreen() {
         </Pressable>
 
         <YStack gap="$5">
-          <YStack gap="$2">
+          <YStack gap="$3">
             <Text color={appColors.textMuted} fontSize="$2" letterSpacing={0.7}>
-              SEAT SELECTOR
+              DESTINATION
             </Text>
             <Text color={appColors.textPrimary} fontSize="$10" fontWeight="800">
-              How many seats will you book?
+              {destinationName}
             </Text>
-            <Text color={appColors.textSecondary} fontSize="$4">
-              Review the route details, set the seat count, then continue to payment.
-            </Text>
+
+            <YStack
+              gap="$2"
+              p="$4"
+              borderWidth={1}
+              borderColor={appColors.border}
+              bg={appColors.surfaceStrong}
+              rounded="$5"
+            >
+              <XStack justify="space-between" items="center" gap="$3">
+                <Text color={appColors.textMuted} fontSize="$3">
+                  Base (per seat)
+                </Text>
+                <Text color={appColors.textPrimary} fontSize="$4" fontWeight="700">
+                  {formatCurrency(pricePerSeat)}
+                </Text>
+              </XStack>
+              <XStack justify="space-between" items="center" gap="$3">
+                <Text color={appColors.textMuted} fontSize="$3">
+                  Total
+                </Text>
+                <Text color={appColors.accent} fontSize="$5" fontWeight="800">
+                  {formatCurrency(totalPrice)}
+                </Text>
+              </XStack>
+              <Text color={appColors.textMuted} fontSize="$3">
+                Seats available now:{' '}
+                <Text color={appColors.textPrimary} fontWeight="700">
+                  {availableSeatsLive}
+                </Text>
+              </Text>
+            </YStack>
           </YStack>
 
           <View style={styles.counterCard}>
             <Text color={appColors.textMuted} fontSize="$2" letterSpacing={0.6}>
-              SEAT COUNT
+              SEATS TO YOUR ARRIVAL
+            </Text>
+            <Text
+              mt="$2"
+              color={appColors.textPrimary}
+              fontSize="$6"
+              fontWeight="800"
+              style={styles.counterDestination}
+            >
+              {destinationName}
             </Text>
 
             <View style={styles.counterCircle}>
@@ -149,11 +257,11 @@ export default function BookingScreen() {
 
             <XStack justify="space-between" gap="$3">
               <Pressable
-                disabled={seatCount <= 1}
+                disabled={seatCount <= 1 || availableSeatsLive <= 0}
                 onPress={() => setSeatCount((count) => Math.max(1, count - 1))}
                 style={({ pressed }) => [
                   styles.counterButton,
-                  seatCount <= 1 ? styles.disabledControl : null,
+                  seatCount <= 1 || availableSeatsLive <= 0 ? styles.disabledControl : null,
                   pressed && seatCount > 1 ? styles.buttonPressed : null,
                 ]}
               >
@@ -161,52 +269,37 @@ export default function BookingScreen() {
               </Pressable>
 
               <Pressable
-                disabled={seatCount >= availableSeats}
-                onPress={() => setSeatCount((count) => Math.min(availableSeats, count + 1))}
+                disabled={seatCount >= availableSeatsLive || availableSeatsLive <= 0}
+                onPress={() => setSeatCount((count) => Math.min(availableSeatsLive, count + 1))}
                 style={({ pressed }) => [
                   styles.counterButton,
-                  seatCount >= availableSeats ? styles.disabledControl : null,
-                  pressed && seatCount < availableSeats ? styles.buttonPressed : null,
+                  seatCount >= availableSeatsLive || availableSeatsLive <= 0
+                    ? styles.disabledControl
+                    : null,
+                  pressed && seatCount < availableSeatsLive ? styles.buttonPressed : null,
                 ]}
               >
                 <MaterialCommunityIcons name="plus" size={22} color={appColors.textPrimary} />
               </Pressable>
             </XStack>
-
-            <Text color={appColors.textSecondary} fontSize="$3" style={styles.centerText}>
-              {availableSeats > 0
-                ? `${availableSeats} seats are currently available on this route.`
-                : 'This route is currently full.'}
-            </Text>
-          </View>
-
-          <View style={styles.summaryCard}>
-            <Text color={appColors.textPrimary} fontSize="$6" fontWeight="800">
-              Trip details
-            </Text>
-
-            <YStack mt="$4" gap="$3">
-              <SummaryRow label="Depart station" value={stationName} />
-              <SummaryRow label="Arrival station" value={destinationName} />
-              <SummaryRow label="Route" value={routeName} />
-              <SummaryRow label="ETD" value={etdLabel} />
-              <SummaryRow label="Price per seat" value={formatCurrency(pricePerSeat)} />
-              <SummaryRow label="Total price" value={formatCurrency(totalPrice)} highlight />
-            </YStack>
           </View>
 
           <Pressable
-            disabled={!canContinue}
-            onPress={handleContinue}
+            disabled={!canContinue || submitting}
+            onPress={() => void handleContinue()}
             style={({ pressed }) => [
               styles.primaryButton,
-              !canContinue ? styles.disabledControl : null,
-              pressed && canContinue ? styles.buttonPressed : null,
+              !canContinue || submitting ? styles.disabledControl : null,
+              pressed && canContinue && !submitting ? styles.buttonPressed : null,
             ]}
           >
-            <Text color={appColors.bg} fontSize="$4" fontWeight="800">
-              Continue to payment
-            </Text>
+            {submitting ? (
+              <ActivityIndicator color={appColors.bg} />
+            ) : (
+              <Text color={appColors.bg} fontSize="$4" fontWeight="800">
+                Continue to payment
+              </Text>
+            )}
           </Pressable>
         </YStack>
       </ScrollView>
@@ -214,23 +307,9 @@ export default function BookingScreen() {
   );
 }
 
-function SummaryRow({ label, value, highlight = false }: { label: string; value: string; highlight?: boolean }) {
-  return (
-    <XStack items="center" justify="space-between" gap="$3">
-      <Text color={appColors.textMuted} fontSize="$3">
-        {label}
-      </Text>
-      <Text color={highlight ? appColors.accent : appColors.textPrimary} fontSize="$4" fontWeight="700">
-        {value}
-      </Text>
-    </XStack>
-  );
-}
-
 const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 20,
-    paddingTop: 56,
     paddingBottom: 48,
     gap: 28,
   },
@@ -251,7 +330,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#143C5C',
     padding: 24,
     alignItems: 'center',
-    gap: 20,
+    gap: 18,
+  },
+  counterDestination: {
+    textAlign: 'center',
   },
   counterCircle: {
     width: 124,
@@ -264,7 +346,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(154, 62, 62, 0.75)',
   },
   counterButton: {
-    width: 84,
+    flex: 1,
     height: 48,
     borderRadius: 14,
     alignItems: 'center',
@@ -272,13 +354,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.18)',
     backgroundColor: 'rgba(164, 62, 62, 0.82)',
-  },
-  summaryCard: {
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: appColors.border,
-    backgroundColor: appColors.surfaceStrong,
-    padding: 20,
   },
   primaryButton: {
     borderRadius: 18,
@@ -293,8 +368,5 @@ const styles = StyleSheet.create({
   buttonPressed: {
     opacity: 0.92,
     transform: [{ scale: 0.99 }],
-  },
-  centerText: {
-    textAlign: 'center',
   },
 });

@@ -14,6 +14,25 @@ export type NetworkErrorInfo = {
   message: string;
 };
 
+/** Nest/axios JSON body shapes: `{ message }`, `{ error }`, `{ message: string[] }` */
+export function extractApiErrorMessage(error: unknown): string | null {
+  if (!isAxiosError(error)) return null;
+  const data = error.response?.data as Record<string, unknown> | undefined;
+  if (!data || typeof data !== 'object') return null;
+
+  const m = data.message;
+  if (typeof m === 'string' && m.trim()) return m.trim();
+  if (Array.isArray(m)) {
+    const joined = m.filter((x): x is string => typeof x === 'string').join(', ').trim();
+    return joined || null;
+  }
+
+  const e = data.error;
+  if (typeof e === 'string' && e.trim()) return e.trim();
+
+  return null;
+}
+
 export function toNetworkErrorInfo(error: unknown): NetworkErrorInfo {
   if (isAxiosError(error)) {
     if (error.code === 'ERR_CANCELED') {
@@ -91,12 +110,19 @@ export function toUserFacingErrorCopy(
   }
 
   if (info.kind === 'server') {
+    const apiDetail = extractApiErrorMessage(error);
     return {
       title: fallback,
-      detail: info.status ? `HTTP ${info.status}.` : null,
+      detail:
+        apiDetail ??
+        (info.status != null ? `HTTP ${info.status}.` : null),
     };
   }
 
-  return { title: fallback, detail: info.message || null };
+  const apiFallback = extractApiErrorMessage(error);
+  return {
+    title: fallback,
+    detail: apiFallback ?? info.message ?? null,
+  };
 }
 

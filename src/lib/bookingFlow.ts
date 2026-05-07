@@ -40,7 +40,11 @@ export function buildBookingRouteMeta(route: RouteData, stationName: string): Bo
   const routeId = String(route.id);
   const hash = hashString(`${routeId}:${route.name}:${stationName}`);
   const names = splitRouteName(route.name, stationName);
-  const pricePerSeat = 15 + ((hash % 6) * 5);
+  const fromApi =
+    typeof route.base_price === 'number' && Number.isFinite(route.base_price) && route.base_price > 0
+      ? route.base_price
+      : null;
+  const pricePerSeat = fromApi ?? 15 + (hash % 6) * 5;
   const etdIso = dayjs().add(10 + (hash % 8) * 5, 'minute').second(0).millisecond(0).toISOString();
 
   return {
@@ -62,8 +66,10 @@ export function createTicketCode(): string {
   return `WS-${stamp}-${random}`;
 }
 
+/** Tunisian dinar — amounts are assumed to be in TND (not millimes). */
 export function formatCurrency(amount: number): string {
-  return `${amount.toFixed(0)} MAD`;
+  const n = Number.isFinite(amount) ? amount : 0;
+  return `${n.toFixed(2)} TND`;
 }
 
 export function formatIssuedAt(iso: string): string {

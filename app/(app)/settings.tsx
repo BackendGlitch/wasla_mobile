@@ -1,14 +1,21 @@
-import { Pressable } from 'react-native';
+import { Pressable, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { YStack, XStack, Text, ScrollView } from 'tamagui';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { useAuthStore } from '../../src/store';
 import { forceLogout } from '../../src/lib';
 import { appColors } from '../../src/theme/appTheme';
 
 export default function SettingsScreen() {
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useAuthStore();
+
+  const navigateBack = () => {
+    if (router.canGoBack()) router.back();
+    else router.replace('/(app)');
+  };
 
   const bottomPad = Math.max(24, insets.bottom + 96);
 
@@ -25,13 +32,23 @@ export default function SettingsScreen() {
     <YStack flex={1} bg={appColors.bg}>
       <ScrollView
         flex={1}
-        contentContainerStyle={{
-          paddingTop: insets.top + 20,
-          paddingHorizontal: 20,
-          paddingBottom: bottomPad,
-        }}
+        contentContainerStyle={
+          {
+            paddingTop: insets.top + 20,
+            paddingHorizontal: 20,
+            paddingBottom: bottomPad,
+          } as never
+        }
         showsVerticalScrollIndicator={false}
       >
+        <Pressable onPress={navigateBack} style={[styles.backButton, { marginBottom: 14 }]}>
+          <XStack items="center" gap="$2">
+            <MaterialCommunityIcons name="arrow-left" size={20} color={appColors.textPrimary} />
+            <Text fontSize="$4" fontWeight="700" color={appColors.textPrimary}>
+              Back
+            </Text>
+          </XStack>
+        </Pressable>
         <Text fontSize="$8" fontWeight="800" color={appColors.textPrimary} mb="$2">
           Settings
         </Text>
@@ -145,3 +162,15 @@ export default function SettingsScreen() {
     </YStack>
   );
 }
+
+const styles = StyleSheet.create({
+  backButton: {
+    alignSelf: 'flex-start',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: appColors.borderStrong,
+    backgroundColor: appColors.surfaceStrong,
+  },
+});
