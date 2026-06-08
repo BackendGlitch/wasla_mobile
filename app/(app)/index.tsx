@@ -150,16 +150,16 @@ function stationCardSubtitle(station: StationWithDistance): string {
 function getStatusColors(status: Station['status'], isSelected: boolean) {
   if (status === 'online') {
     return {
-      bg: isSelected ? 'rgba(11, 43, 22, 0.9)' : 'rgba(38, 87, 55, 0.35)',
-      border: 'rgba(120, 230, 150, 0.28)',
-      text: '#C8FFD6',
+      bg: isSelected ? 'rgba(34, 197, 94, 0.16)' : 'rgba(34, 197, 94, 0.08)',
+      border: 'rgba(34, 197, 94, 0.22)',
+      text: '#BBF7D0',
     };
   }
 
   return {
-    bg: isSelected ? 'rgba(74, 21, 21, 0.92)' : 'rgba(110, 36, 36, 0.36)',
-    border: 'rgba(255, 130, 130, 0.22)',
-    text: '#FFD4D4',
+    bg: isSelected ? 'rgba(239, 68, 68, 0.16)' : 'rgba(239, 68, 68, 0.08)',
+    border: 'rgba(239, 68, 68, 0.22)',
+    text: '#FECACA',
   };
 }
 
@@ -1202,8 +1202,8 @@ const styles = StyleSheet.create({
   errorCard: {
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: 'rgba(255, 111, 111, 0.28)',
-    backgroundColor: 'rgba(86, 24, 24, 0.38)',
+    borderColor: 'rgba(239, 68, 68, 0.22)',
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
     padding: 18,
   },
   infoCard: {

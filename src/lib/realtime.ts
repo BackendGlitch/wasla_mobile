@@ -1,9 +1,11 @@
 import { io, type Socket } from 'socket.io-client';
 import { useBookingRoutesLiveStore } from '../store/bookingRoutesLiveStore';
+import { useBookingStore, type Ticket } from '../store/bookingStore';
 import { useRealtimeStore } from '../store/realtimeStore';
 import { useStationStore } from '../store/stationStore';
 import { resolveCentralServerUrl } from './serverConfig';
 import { captureException } from './observability';
+import { readStoredToken } from './sessionStorage';
 
 let centralSocket: Socket | null = null;
 let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
@@ -44,6 +46,9 @@ export const initCentralRealtime = (): Socket | null => {
     lastError: null,
   });
 
+  // Resolve the current JWT for the handshake (non-blocking; null if not signed in).
+  const authPromise = readStoredToken().then((token) => (token ? { token } : undefined));
+
   const socket = io(namespaceUrl, {
     transports: ['websocket'],
     autoConnect: true,
@@ -53,6 +58,9 @@ export const initCentralRealtime = (): Socket | null => {
     reconnectionDelayMax: 5_000,
     randomizationFactor: 0.5,
     timeout: 10_000,
+    auth: (cb: (data: Record<string, unknown>) => void) => {
+      void authPromise.then((authData) => cb(authData ?? {}));
+    },
   });
 
   // Socket.IO reconnection lifecycle events happen on the underlying manager.
@@ -154,6 +162,56 @@ export const initCentralRealtime = (): Socket | null => {
         typeof payload?.station_id === 'string' ? payload.station_id.trim() : '';
       if (!stationId || !Array.isArray(payload.routes)) return;
       useBookingRoutesLiveStore.getState().applyLiveRoutesPayload(stationId, payload.routes);
+    },
+  );
+
+  // Booking confirmation pushed after successful NexaPay webhook
+  socket.on(
+    'booking.confirmed',
+    (payload: {
+      booking_id?: string;
+      ticket?: {
+        id?: string;
+        qr_payload?: string;
+        vehicle_plate?: string | null;
+        etd_timestamp?: string | null;
+        created_at?: string | null;
+        seats_booked?: number;
+        station_id?: string;
+        destination_id?: string;
+      };
+    }) => {
+      const t = payload?.ticket;
+      if (!t?.id || !t.qr_payload) return;
+
+      const store = useBookingStore.getState();
+      // Avoid adding duplicate tickets
+      if (store.tickets.some((existing) => existing.id === t.id)) return;
+
+      store.addTicket({
+        id: t.id!,
+        qrValue: t.qr_payload!,
+        issuedAt: t.created_at ?? new Date().toISOString(),
+        paymentStatus: 'confirmed',
+        stationId: t.station_id ?? '',
+        stationName: '',
+        routeId: '',
+        routeName: '',
+        departureName: '',
+        destinationName: t.destination_id ?? '',
+        availableSeats: 0,
+        seatCount: t.seats_booked ?? 0,
+        pricePerSeat: 0,
+        totalPrice: 0,
+        etdIso: t.etd_timestamp ?? new Date().toISOString(),
+        etdLabel: t.etd_timestamp
+          ? new Date(t.etd_timestamp).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+            })
+          : '--:--',
+        vehiclePlate: t.vehicle_plate ?? 'Assigned',
+      });
     },
   );
 

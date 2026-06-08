@@ -32,7 +32,7 @@ api.interceptors.request.use(async (config) => {
     return Promise.reject(new Error(resolved.error ?? 'Central server URL is not configured.'));
   }
 
-  config.baseURL = resolved.url;
+  config.baseURL = resolved.url.replace(/\/+$/, '') + '/api/v1';
   breadcrumbCentralBaseUrlResolution(resolved);
 
   const token = await getValidStoredToken();

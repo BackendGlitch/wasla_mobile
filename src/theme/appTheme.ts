@@ -1,20 +1,30 @@
+// App theme — main (post-auth) screens
+// Deep navy with gold accents. Clean, professional, high contrast.
+
 export const appColors = {
-  // Warm industrial palette: charcoal base, brass accents, high-contrast readability.
-  bg: '#0E0D0C',
-  surface: '#191511',
-  surfaceStrong: '#241C16',
-  surfaceGlass: 'rgba(27, 21, 16, 0.9)',
-  border: 'rgba(219, 140, 74, 0.24)',
-  borderStrong: 'rgba(234, 169, 109, 0.44)',
-  textPrimary: '#F2E1C8',
-  textSecondary: '#CFB795',
-  textMuted: '#9C866B',
-  accent: '#D36B2B',
-  accentSoft: 'rgba(211, 107, 43, 0.24)',
-  accentGlow: 'rgba(238, 148, 79, 0.58)',
-  accentGlowSoft: 'rgba(211, 107, 43, 0.23)',
-  accentDark: '#8F431A',
-  tabShadow: 'rgba(0, 0, 0, 0.62)',
-  iconInactive: '#B69C7D',
-  iconActive: '#16110C',
+  bg: '#060B14',
+  surface: '#0B1424',
+  surfaceStrong: '#111D32',
+  surfaceGlass: 'rgba(11, 20, 36, 0.92)',
+
+  border: 'rgba(212, 168, 83, 0.10)',
+  borderStrong: 'rgba(212, 168, 83, 0.20)',
+
+  textPrimary: '#F0F4FF',
+  textSecondary: '#8899B4',
+  textMuted: '#556580',
+
+  accent: '#D4A853',
+  accentSoft: 'rgba(212, 168, 83, 0.14)',
+  accentGlow: 'rgba(212, 168, 83, 0.30)',
+  accentGlowSoft: 'rgba(212, 168, 83, 0.06)',
+  accentDark: '#8B6914',
+
+  success: '#22C55E',
+  error: '#EF4444',
+  warning: '#F59E0B',
+
+  tabShadow: 'rgba(0, 0, 0, 0.5)',
+  iconInactive: '#556580',
+  iconActive: '#D4A853',
 } as const;

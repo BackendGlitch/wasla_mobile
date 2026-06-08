@@ -13,7 +13,7 @@ export default function AuthWelcomeScreen() {
   const insets = useSafeAreaInsets();
 
   return (
-    <AuthBackdrop variant="teal">
+    <AuthBackdrop>
       <StatusBar style="light" />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
@@ -53,7 +53,7 @@ export default function AuthWelcomeScreen() {
                   paddingVertical: 16,
                   paddingHorizontal: 20,
                   borderRadius: 12,
-                  backgroundColor: pressed ? authColors.accentViolet : authColors.accent,
+                  backgroundColor: pressed ? authColors.accentSoft : authColors.accent,
                   borderWidth: 1,
                   borderColor: authColors.borderStrong,
                 })}
@@ -73,7 +73,7 @@ export default function AuthWelcomeScreen() {
                   paddingVertical: 16,
                   paddingHorizontal: 20,
                   borderRadius: 12,
-                  backgroundColor: pressed ? 'rgba(211, 107, 43, 0.14)' : 'transparent',
+                  backgroundColor: pressed ? authColors.accentSoft : 'transparent',
                   borderWidth: 1,
                   borderColor: authColors.borderStrong,
                 })}

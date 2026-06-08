@@ -148,10 +148,18 @@ export default function BookingScreen() {
         throw new Error('Server did not return a booking reference.');
       }
 
+      const paymentUrl =
+        typeof res?.payment_url === 'string'
+          ? res.payment_url
+          : typeof res?.paymentUrl === 'string'
+            ? res.paymentUrl
+            : '';
+
       router.push({
         pathname: '/(app)/payment',
         params: {
           centralBookingId,
+          paymentUrl,
           stationId,
           stationName,
           routeId,
@@ -355,7 +363,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1.5,
     borderColor: appColors.borderStrong,
-    backgroundColor: 'rgba(211, 107, 43, 0.26)',
+    backgroundColor: appColors.accentSoft,
   },
   counterButton: {
     flex: 1,

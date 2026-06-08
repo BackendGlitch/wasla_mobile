@@ -1,13 +1,13 @@
 import { Animated, Dimensions, StyleSheet, Text, View } from 'react-native';
 import { BrandLogo } from '../BrandLogo';
+import { appColors } from '../../theme/appTheme';
 
-/** Must match `expo.splash.backgroundColor` in app.json */
-export const SPLASH_BACKGROUND = '#141210';
+export const SPLASH_BACKGROUND = appColors.bg;
 
 const { width: WINDOW_WIDTH } = Dimensions.get('window');
 
 function logoSizeForSplash() {
-  return Math.min(176, Math.round(WINDOW_WIDTH * 0.46));
+  return Math.min(160, Math.round(WINDOW_WIDTH * 0.40));
 }
 
 export function SplashBootstrapContent() {
@@ -51,23 +51,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
   },
   wordmark: {
-    marginTop: 22,
-    fontSize: 13,
-    fontWeight: '800',
-    letterSpacing: 5,
-    color: '#C4A882',
+    marginTop: 24,
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 6,
+    color: appColors.textPrimary,
   },
   tagline: {
-    marginTop: 10,
+    marginTop: 8,
     fontSize: 12,
-    letterSpacing: 0.4,
-    color: '#7A6854',
+    letterSpacing: 0.5,
+    color: appColors.textMuted,
   },
   rule: {
-    marginTop: 28,
-    width: 56,
+    marginTop: 24,
+    width: 48,
     height: 2,
     borderRadius: 1,
-    backgroundColor: 'rgba(214, 140, 72, 0.45)',
+    backgroundColor: appColors.accent,
   },
 });

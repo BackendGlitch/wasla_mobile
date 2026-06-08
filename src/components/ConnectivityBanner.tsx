@@ -6,7 +6,6 @@ import { useConnectivityStore } from '../store/connectivityStore';
 import { appColors } from '../theme/appTheme';
 
 type ConnectivityBannerProps = {
-  /** Refetch TanStack queries + bump station-load epoch elsewhere. */
   onRetry: () => void;
 };
 
@@ -29,11 +28,11 @@ export function ConnectivityBanner({ onRetry }: ConnectivityBannerProps) {
       justify="space-between"
       gap="$3"
     >
-      <Text flex={1} color={appColors.textPrimary} fontSize="$3">
+      <Text flex={1} color={appColors.textPrimary} fontSize="$3" fontWeight="500">
         You're offline — actions will resume when connectivity returns.
       </Text>
       <Pressable onPress={handleRetry} accessibilityRole="button" accessibilityLabel="Retry network">
-        <Text color={appColors.accent} fontWeight="800">
+        <Text color={appColors.accent} fontWeight="700" fontSize="$3">
           Retry
         </Text>
       </Pressable>
@@ -43,11 +42,11 @@ export function ConnectivityBanner({ onRetry }: ConnectivityBannerProps) {
 
 const styles = StyleSheet.create({
   banner: {
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
     paddingBottom: 10,
-    backgroundColor: 'rgba(140, 40, 40, 0.92)',
+    backgroundColor: 'rgba(239, 68, 68, 0.18)',
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(0,0,0,0.25)',
+    borderBottomColor: 'rgba(239, 68, 68, 0.12)',
     zIndex: 50,
   },
 });

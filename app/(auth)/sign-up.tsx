@@ -19,7 +19,6 @@ import {
   authApi,
   encodeAuthRouteParam,
   getCentralApiErrorMessage,
-  toE164TNPhone,
 } from '../../src/lib';
 
 const strongPassword = z
@@ -97,7 +96,8 @@ export default function SignUpScreen() {
     if (!ok) return;
 
     if (step === 1) {
-      const phoneE164 = toE164TNPhone(getValues('phone'));
+      const raw = getValues('phone').trim().replace(/\s+/g, '');
+      const phoneE164 = raw.startsWith('+') ? raw : `+216${raw.replace(/[^\d]/g, '')}`;
       try {
         const avail = await authApi.checkAvailability({
           email: getValues('email').trim().toLowerCase(),
@@ -132,7 +132,8 @@ export default function SignUpScreen() {
     setFormError('');
     setSubmitting(true);
     try {
-      const phoneE164 = toE164TNPhone(data.phone);
+      const raw = data.phone.trim().replace(/\s+/g, '');
+      const phoneE164 = raw.startsWith('+') ? raw : `+216${raw.replace(/[^\d]/g, '')}`;
       await authApi.register({
         email: data.email.trim().toLowerCase(),
         phone: phoneE164,
@@ -140,11 +141,11 @@ export default function SignUpScreen() {
         firstName: data.firstName.trim(),
         lastName: data.lastName.trim(),
       });
-      await authApi.requestOtp({ phone: phoneE164 });
-      const emailNorm = data.email.trim().toLowerCase();
+      // Send email OTP and go to verify-email
+      await authApi.requestOtp({ email: data.email.trim().toLowerCase() });
       router.replace({
-        pathname: '/(auth)/otp',
-        params: { phone: phoneE164, email: encodeAuthRouteParam(emailNorm) },
+        pathname: '/(auth)/verify-email',
+        params: { email: encodeAuthRouteParam(data.email.trim().toLowerCase()), skipInitialOtp: '1' },
       });
     } catch (e: unknown) {
       setFormError(getCentralApiErrorMessage(e));
@@ -154,7 +155,7 @@ export default function SignUpScreen() {
   };
 
   return (
-    <AuthBackdrop variant="amber">
+    <AuthBackdrop>
       <StatusBar style="light" />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
@@ -483,7 +484,7 @@ export default function SignUpScreen() {
               style={({ pressed }) => ({
                 paddingVertical: 16,
                 borderRadius: 14,
-                backgroundColor: pressed ? '#E89A35' : authColors.warning,
+                backgroundColor: pressed ? '#D97706' : authColors.warning,
                 opacity: submitting ? 0.65 : 1,
                 alignItems: 'center',
               })}

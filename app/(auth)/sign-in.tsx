@@ -15,7 +15,6 @@ import {
   authApi,
   finishAuthAndNavigate,
   getCentralApiErrorMessage,
-  toE164TNPhone,
 } from '../../src/lib';
 
 type SignInMode = 'phone' | 'email';
@@ -54,17 +53,27 @@ export default function SignInScreen() {
     else router.replace('/(auth)');
   };
 
-  const sendPhoneCode = async () => {
-    if (phone.trim().length < 6) {
+  const [phonePassword, setPhonePassword] = useState('');
+
+  const onPhoneLogin = async () => {
+    const raw = phone.trim().replace(/\s+/g, '');
+    if (raw.length < 8) {
       setPhoneError('Enter a valid mobile number');
+      return;
+    }
+    if (!phonePassword) {
+      setPhoneError('Password is required');
       return;
     }
     setPhoneError('');
     setPhoneLoading(true);
     try {
-      const phoneE164 = toE164TNPhone(phone);
-      await authApi.requestOtp({ phone: phoneE164 });
-      router.push({ pathname: '/(auth)/otp', params: { phone: phoneE164 } });
+      const phoneE164 = raw.startsWith('+') ? raw : `+216${raw.replace(/[^\d]/g, '')}`;
+      const result = await authApi.loginWithPhone({
+        phone: phoneE164,
+        password: phonePassword,
+      });
+      await finishAuthAndNavigate(result, router, setToken, setUser);
     } catch (e: unknown) {
       setPhoneError(getCentralApiErrorMessage(e));
     } finally {
@@ -90,7 +99,7 @@ export default function SignInScreen() {
   };
 
   return (
-    <AuthBackdrop variant="violet">
+    <AuthBackdrop>
       <StatusBar style="light" />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
@@ -149,10 +158,10 @@ export default function SignInScreen() {
                 items="center"
               >
                 <Text fontWeight="800" fontSize="$3" color={authColors.textPrimary}>
-                  SMS code
+                  Phone
                 </Text>
                 <Text fontSize="$2" color={authColors.textMuted} mt="$1">
-                  Phone number
+                  + password
                 </Text>
               </YStack>
             </Pressable>
@@ -196,9 +205,6 @@ export default function SignInScreen() {
                 <Text fontSize="$3" fontWeight="700" color={authColors.textSecondary}>
                   Tunisian mobile number
                 </Text>
-                <Text fontSize="$2" color={authColors.textMuted} lineHeight={18}>
-                  We&apos;ll send a one-time code by SMS. Standard rates may apply.
-                </Text>
                 <XStack
                   items="center"
                   gap="$2"
@@ -225,18 +231,48 @@ export default function SignInScreen() {
                     fontSize="$4"
                   />
                 </XStack>
+
+                <YStack gap="$2">
+                  <Text fontSize="$3" fontWeight="700" color={authColors.textSecondary}>
+                    Password
+                  </Text>
+                  <XStack
+                    borderWidth={1}
+                    borderColor={authColors.borderStrong}
+                    rounded="$5"
+                    items="center"
+                    bg={authColors.cardStrong}
+                    px="$3"
+                  >
+                    <MaterialCommunityIcons name="lock-outline" size={18} color={authColors.textMuted} />
+                    <Input
+                      flex={1}
+                      size="$4"
+                      placeholder="Your password"
+                      placeholderTextColor="$textMuted"
+                      secureTextEntry
+                      value={phonePassword}
+                      onChangeText={setPhonePassword}
+                      borderWidth={0}
+                      bg="transparent"
+                      fontSize="$4"
+                      color={authColors.textPrimary}
+                    />
+                  </XStack>
+                </YStack>
+
                 {phoneError ? (
                   <Text fontSize="$2" color={authColors.error}>
                     {phoneError}
                   </Text>
                 ) : null}
                 <Pressable
-                  onPress={sendPhoneCode}
+                  onPress={onPhoneLogin}
                   disabled={phoneLoading}
                   style={({ pressed }) => ({
                     paddingVertical: 16,
                     borderRadius: 14,
-                    backgroundColor: pressed ? '#7357E8' : authColors.accentViolet,
+                    backgroundColor: pressed ? '#8B6914' : authColors.accent,
                     opacity: phoneLoading ? 0.7 : 1,
                     alignItems: 'center',
                   })}
@@ -245,7 +281,7 @@ export default function SignInScreen() {
                     <Spinner color={authColors.bg} />
                   ) : (
                     <Text color={authColors.bg} fontWeight="800" fontSize="$5">
-                      Send code
+                      Sign in
                     </Text>
                   )}
                 </Pressable>
@@ -254,9 +290,9 @@ export default function SignInScreen() {
               <>
                 {emailError ? (
                   <YStack
-                    bg="rgba(255, 92, 122, 0.12)"
+                    bg="rgba(239, 68, 68, 0.10)"
                     borderWidth={1}
-                    borderColor="rgba(255, 92, 122, 0.4)"
+                    borderColor="rgba(239, 68, 68, 0.30)"
                     p="$3"
                     rounded="$4"
                   >
@@ -349,9 +385,6 @@ export default function SignInScreen() {
                   ) : null}
                 </YStack>
 
-                <Text fontSize="$2" color={authColors.textMuted} lineHeight={18}>
-                  Email sign-in works after you&apos;ve verified your email during sign-up.
-                </Text>
 
                 <Pressable
                   onPress={handleSubmit(onEmailLogin)}
@@ -360,7 +393,7 @@ export default function SignInScreen() {
                   style={({ pressed }) => ({
                     paddingVertical: 16,
                     borderRadius: 14,
-                    backgroundColor: pressed ? '#38B7E8' : authColors.accentBlue,
+                    backgroundColor: pressed ? '#8B6914' : authColors.accent,
                     opacity: !isValid || emailLoading ? 0.55 : 1,
                     alignItems: 'center',
                   })}

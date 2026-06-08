@@ -101,7 +101,7 @@ export default function OnboardingScreen() {
           rounded="$10"
           bg={authColors.accentSoft}
           borderWidth={1}
-          borderColor="rgba(56, 246, 177, 0.32)"
+          borderColor={authColors.borderStrong}
         >
           <Text fontSize="$2" fontWeight="700" color={authColors.accent} letterSpacing={1.2}>
             {item.chip.toUpperCase()}
@@ -134,7 +134,7 @@ export default function OnboardingScreen() {
   const isLast = currentIndex === slides.length - 1;
 
   return (
-    <AuthBackdrop variant="teal">
+    <AuthBackdrop>
       <StatusBar style="light" />
 
       <YStack flex={1} pt="$8" pb="$6">
@@ -184,9 +184,9 @@ export default function OnboardingScreen() {
             width="100%"
             bg={authColors.accent}
             borderWidth={1}
-            borderColor="rgba(56, 246, 177, 0.4)"
+            borderColor={authColors.borderStrong}
             rounded="$6"
-            pressStyle={{ bg: '#2ED79B' }}
+            pressStyle={{ bg: authColors.accentDark || '#8B6914' }}
             onPress={handleNext}
           >
             <Text color={authColors.bg} fontWeight="800" fontSize="$5" letterSpacing={0.6}>

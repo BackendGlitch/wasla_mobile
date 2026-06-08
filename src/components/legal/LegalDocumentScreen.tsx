@@ -31,7 +31,7 @@ export default function LegalDocumentScreen({ title, subtitle, sections }: Legal
   const padBottom = Math.max(insets.bottom, 16) + 24;
 
   return (
-    <AuthBackdrop variant="teal">
+    <AuthBackdrop>
       <StatusBar style="light" />
       <KeyboardAvoidingView
         style={{ flex: 1 }}

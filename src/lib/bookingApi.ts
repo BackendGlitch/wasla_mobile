@@ -1,6 +1,28 @@
 // src/lib/bookingApi.ts
 import api from './api';
 
+export type BookingStatusResponse = {
+  id: string;
+  status: string;
+  payment_status: string;
+  payment_reference?: string | null;
+  seats_booked: number;
+  station_id: string;
+  destination_id: string;
+  expires_at: string;
+  created_at: string;
+};
+
+export const getBooking = async (
+  bookingId: string,
+  options?: { signal?: AbortSignal },
+): Promise<BookingStatusResponse> => {
+  const response = await api.get(`/bookings/${encodeURIComponent(bookingId.trim())}`, {
+    signal: options?.signal,
+  });
+  return response.data;
+};
+
 export const createBooking = async (
   payload: {
     station_id: string;

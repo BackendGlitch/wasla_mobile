@@ -136,8 +136,7 @@ export default function RootLayout() {
         router.replace('/(auth)');
       }
     } else {
-      const finishingVerification =
-        segments.includes('otp') || segments.includes('verify-email');
+      const finishingVerification = segments.includes('verify-email');
       if (!inAppGroup && !finishingVerification) {
         router.replace('/(app)');
       }

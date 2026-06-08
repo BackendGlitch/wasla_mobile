@@ -14,12 +14,7 @@ const soraBody = createFont({
   size: defaultConfig.fonts.body.size,
   lineHeight: defaultConfig.fonts.body.lineHeight,
   letterSpacing: defaultConfig.fonts.body.letterSpacing,
-  weight: {
-    1: '400',
-    4: '500',
-    6: '600',
-    7: '700',
-  },
+  weight: { 1: '400', 4: '500', 6: '600', 7: '700' },
   face: soraFace,
 });
 
@@ -28,35 +23,21 @@ const soraHeading = createFont({
   size: defaultConfig.fonts.heading.size,
   lineHeight: defaultConfig.fonts.heading.lineHeight,
   letterSpacing: defaultConfig.fonts.heading.letterSpacing,
-  weight: {
-    6: '600',
-    7: '700',
-    8: '700',
-    9: '700',
-  },
+  weight: { 6: '600', 7: '700', 8: '700', 9: '700' },
   face: soraFace,
 });
 
 export const tamaguiConfig = createTamagui({
   ...defaultConfig,
-  fonts: {
-    ...defaultConfig.fonts,
-    body: soraBody,
-    heading: soraHeading,
-  },
+  fonts: { ...defaultConfig.fonts, body: soraBody, heading: soraHeading },
   tokens: {
     ...defaultConfig.tokens,
     color: {
       ...defaultConfig.tokens.color,
-      // Wasla brand tokens available as $primary, $secondary, etc.
-      primary: waslaColors.primary500,
-      primaryLight: waslaColors.primary100,
-      primaryDark: waslaColors.primary800,
-      secondary: waslaColors.secondary500,
-      secondaryLight: waslaColors.secondary100,
-      secondaryDark: waslaColors.secondary800,
-      accent: waslaColors.accent500,
-      accentLight: waslaColors.accent200,
+      primary: waslaColors.primary,
+      primaryLight: waslaColors.primaryLight,
+      primaryDark: waslaColors.primaryDark,
+      accent: waslaColors.accent,
       success: waslaColors.success,
       warning: waslaColors.warning,
       error: waslaColors.error,
@@ -71,15 +52,10 @@ export const tamaguiConfig = createTamagui({
   },
   themes: {
     ...defaultConfig.themes,
-    light: {
-      ...defaultConfig.themes.light,
-      background: waslaColors.background,
-      color: waslaColors.textPrimary,
-    },
     dark: {
       ...defaultConfig.themes.dark,
-      background: '#0F1B1A',
-      color: '#E0F7F6',
+      background: waslaColors.background,
+      color: waslaColors.textPrimary,
     },
   },
 });

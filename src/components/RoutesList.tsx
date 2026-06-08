@@ -192,8 +192,8 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: 'rgba(255, 179, 71, 0.28)',
-    backgroundColor: 'rgba(120, 78, 16, 0.35)',
+    borderColor: 'rgba(245, 158, 11, 0.22)',
+    backgroundColor: 'rgba(245, 158, 11, 0.10)',
   },
   list: {
     padding: 16,
@@ -232,12 +232,12 @@ const styles = StyleSheet.create({
     backgroundColor: appColors.accentSoft,
   },
   badgeWarning: {
-    borderColor: 'rgba(255, 204, 102, 0.45)',
-    backgroundColor: 'rgba(120, 88, 16, 0.35)',
+    borderColor: 'rgba(245, 158, 11, 0.35)',
+    backgroundColor: 'rgba(245, 158, 11, 0.10)',
   },
   badgeFull: {
-    borderColor: 'rgba(255, 111, 111, 0.4)',
-    backgroundColor: 'rgba(120, 25, 25, 0.35)',
+    borderColor: 'rgba(239, 68, 68, 0.30)',
+    backgroundColor: 'rgba(239, 68, 68, 0.10)',
   },
   retryButton: {
     marginTop: 14,

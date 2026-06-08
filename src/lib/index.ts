@@ -4,7 +4,7 @@ export * from './stationsApi';
 export * from './sessionStorage';
 export * from './authLifecycle';
 export { initCentralRealtime, disconnectCentralRealtime } from './realtime';
-export { authApi, toE164TNPhone, getCentralApiErrorMessage } from './authApi';
+export { authApi, getCentralApiErrorMessage } from './authApi';
 export {
   finishAuthAndNavigate,
   encodeAuthRouteParam,

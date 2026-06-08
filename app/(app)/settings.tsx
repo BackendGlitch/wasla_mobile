@@ -145,9 +145,9 @@ export default function SettingsScreen() {
             paddingVertical: 16,
             paddingHorizontal: 18,
             borderRadius: 14,
-            backgroundColor: pressed ? 'rgba(255, 92, 122, 0.18)' : 'rgba(255, 92, 122, 0.1)',
+            backgroundColor: pressed ? 'rgba(239, 68, 68, 0.18)' : 'rgba(239, 68, 68, 0.08)',
             borderWidth: 1,
-            borderColor: 'rgba(255, 92, 122, 0.45)',
+            borderColor: 'rgba(239, 68, 68, 0.30)',
             alignItems: 'center',
             justifyContent: 'center',
           })}

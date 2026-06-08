@@ -112,7 +112,7 @@ const styles = StyleSheet.create({
   },
   routeCardSelected: {
     borderColor: appColors.accent,
-    backgroundColor: 'rgba(74, 255, 169, 0.08)',
+    backgroundColor: appColors.accentGlowSoft,
   },
   routeCardDisabled: {
     opacity: 0.55,

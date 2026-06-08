@@ -3,18 +3,18 @@ import { XStack, Text } from 'tamagui';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import { appColors } from '../../theme/appTheme';
 
 type TabConfig = {
   key: string;
   label: string;
   icon: keyof typeof MaterialCommunityIcons.glyphMap;
-  activeIcon?: keyof typeof MaterialCommunityIcons.glyphMap;
 };
 
 const tabs: TabConfig[] = [
-  { key: 'index', label: 'Main', icon: 'view-dashboard-outline', activeIcon: 'view-dashboard' },
-  { key: 'history', label: 'History', icon: 'clipboard-text-clock-outline', activeIcon: 'clipboard-text-clock' },
-  { key: 'settings', label: 'Settings', icon: 'tune-variant', activeIcon: 'tune-variant' },
+  { key: 'index', label: 'Home', icon: 'home-outline' },
+  { key: 'history', label: 'History', icon: 'text-box-outline' },
+  { key: 'settings', label: 'Settings', icon: 'dots-horizontal' },
 ];
 
 function isTabBarStyleHidden(style: StyleProp<ViewStyle> | undefined): boolean {
@@ -26,23 +26,9 @@ function isTabBarStyleHidden(style: StyleProp<ViewStyle> | undefined): boolean {
   return false;
 }
 
-const c = {
-  frame: '#0C0B0A',
-  frameInset: '#161210',
-  brass: '#C97B3F',
-  brassDim: 'rgba(201, 123, 63, 0.35)',
-  amberLine: 'rgba(232, 168, 108, 0.55)',
-  textIdle: '#8E7760',
-  textIdleMuted: '#5C5044',
-  ink: '#140E0B',
-  activeFill: '#D87A38',
-  activeBorder: '#EEB47A',
-  rivet: 'rgba(232, 180, 122, 0.45)',
-};
-
 export default function GlossyTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
-  const bottomPad = Math.max(10, insets.bottom + 6);
+  const bottomPad = Math.max(8, insets.bottom + 6);
   const activeRouteName = state.routes[state.index]?.name;
   const shouldShowBar = tabs.some((tab) => tab.key === activeRouteName);
   const focusedRoute = state.routes[state.index];
@@ -53,89 +39,56 @@ export default function GlossyTabBar({ state, descriptors, navigation }: BottomT
 
   return (
     <View style={[styles.container, { paddingBottom: bottomPad }]} pointerEvents="box-none">
-      <View style={styles.outerChrome}>
-        <View style={styles.rivetTL} pointerEvents="none" />
-        <View style={styles.rivetTR} pointerEvents="none" />
-        <View style={styles.chromeTopRule} pointerEvents="none" />
+      <View style={styles.bar}>
+        <XStack style={styles.row}>
+          {tabs.map((tab) => {
+            const routeIndex = state.routes.findIndex((r) => r.name === tab.key);
+            const route = state.routes[routeIndex];
+            if (!route) return null;
 
-        <View style={styles.headerStrip}>
-          <Text style={styles.headerLabel}>MENU</Text>
-          <Text style={styles.headerSub}>WASLA</Text>
-        </View>
+            const isFocused = state.index === routeIndex;
 
-        <View style={styles.innerWell}>
-          <XStack style={styles.segmentRow}>
-            {tabs.map((tab, index) => {
-              const routeIndex = state.routes.findIndex((r) => r.name === tab.key);
-              const route = state.routes[routeIndex];
-              if (!route) return null;
+            const onPress = () => {
+              const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
+              if (!isFocused && !event.defaultPrevented) {
+                navigation.navigate(route.name);
+              }
+            };
 
-              const isFocused = state.index === routeIndex;
-
-              const onPress = () => {
-                const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
-                if (!isFocused && !event.defaultPrevented) {
-                  navigation.navigate(route.name);
-                }
-              };
-
-              const onLongPress = () => {
-                navigation.emit({ type: 'tabLongPress', target: route.key });
-              };
-
-              return (
-                <View key={tab.key} style={styles.cellWrap}>
-                  {index > 0 ? <View style={styles.verticalRule} /> : null}
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: isFocused }}
-                    accessibilityLabel={tab.label}
-                    onPress={onPress}
-                    onLongPress={onLongPress}
-                    style={({ pressed }) => [
-                      styles.cell,
-                      isFocused ? styles.cellActive : null,
-                      pressed ? styles.cellPressed : null,
-                    ]}
-                  >
-                    {isFocused ? <View style={styles.activeGlowLine} pointerEvents="none" /> : null}
-                    <MaterialCommunityIcons
-                      name={isFocused && tab.activeIcon ? tab.activeIcon : tab.icon}
-                      size={20}
-                      color={isFocused ? c.ink : c.textIdle}
-                    />
-                    <Text
-                      fontSize="$1"
-                      fontWeight="800"
-                      letterSpacing={1.4}
-                      style={{ color: isFocused ? c.ink : c.textIdleMuted }}
-                    >
-                      {tab.label.toUpperCase()}
-                    </Text>
-                  </Pressable>
-                </View>
-              );
-            })}
-          </XStack>
-        </View>
-
-        <View style={styles.chromeBottomRule} pointerEvents="none" />
-        <View style={styles.rivetBL} pointerEvents="none" />
-        <View style={styles.rivetBR} pointerEvents="none" />
+            return (
+              <Pressable
+                key={tab.key}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isFocused }}
+                accessibilityLabel={tab.label}
+                onPress={onPress}
+                style={({ pressed }) => [
+                  styles.tab,
+                  pressed && styles.tabPressed,
+                ]}
+              >
+                <MaterialCommunityIcons
+                  name={isFocused ? tab.icon.replace('-outline', '') as any : tab.icon}
+                  size={22}
+                  color={isFocused ? appColors.accent : appColors.iconInactive}
+                />
+                <Text
+                  fontSize={11}
+                  fontWeight={isFocused ? '700' : '500'}
+                  letterSpacing={0.3}
+                  color={isFocused ? appColors.accent : appColors.iconInactive}
+                >
+                  {tab.label}
+                </Text>
+                {isFocused && <View style={styles.indicator} />}
+              </Pressable>
+            );
+          })}
+        </XStack>
       </View>
     </View>
   );
 }
-
-const rivetCommon = {
-  position: 'absolute' as const,
-  width: 5,
-  height: 5,
-  borderRadius: 1,
-  backgroundColor: c.rivet,
-  borderWidth: StyleSheet.hairlineWidth,
-  borderColor: c.brassDim,
-};
 
 const styles = StyleSheet.create({
   container: {
@@ -144,123 +97,44 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     alignItems: 'stretch',
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
   },
-  outerChrome: {
-    position: 'relative',
-    borderRadius: 8,
-    backgroundColor: c.frame,
-    borderWidth: 2,
-    borderColor: c.brassDim,
-    paddingTop: 2,
-    paddingBottom: 4,
-    paddingHorizontal: 3,
-    shadowColor: '#000',
-    shadowOpacity: 0.55,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 20,
-    overflow: 'visible',
-  },
-  rivetTL: { ...rivetCommon, top: -2, left: 10 },
-  rivetTR: { ...rivetCommon, top: -2, right: 10 },
-  rivetBL: { ...rivetCommon, bottom: -2, left: 10 },
-  rivetBR: { ...rivetCommon, bottom: -2, right: 10 },
-  chromeTopRule: {
-    position: 'absolute',
-    top: 6,
-    left: 22,
-    right: 22,
-    height: 1,
-    backgroundColor: c.amberLine,
-    opacity: 0.85,
-  },
-  chromeBottomRule: {
-    position: 'absolute',
-    bottom: 8,
-    left: 22,
-    right: 22,
-    height: 1,
-    backgroundColor: c.amberLine,
-    opacity: 0.35,
-  },
-  headerStrip: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-    paddingHorizontal: 14,
-    paddingTop: 10,
-    paddingBottom: 6,
-  },
-  headerLabel: {
-    color: c.brass,
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 2.4,
-  },
-  headerSub: {
-    color: c.textIdleMuted,
-    fontSize: 9,
-    fontWeight: '700',
-    letterSpacing: 1.8,
-  },
-  innerWell: {
-    marginHorizontal: 6,
-    borderRadius: 4,
-    backgroundColor: c.frameInset,
+  bar: {
+    borderRadius: 20,
+    backgroundColor: 'rgba(11, 20, 36, 0.94)',
     borderWidth: 1,
-    borderColor: 'rgba(40, 32, 26, 0.95)',
-    overflow: 'hidden',
+    borderColor: 'rgba(212, 168, 83, 0.10)',
+    paddingVertical: 4,
+    paddingHorizontal: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.4,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 16,
   },
-  segmentRow: {
+  row: {
     flexDirection: 'row',
     alignItems: 'stretch',
-    minHeight: 58,
+    minHeight: 52,
   },
-  cellWrap: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'stretch',
-  },
-  verticalRule: {
-    width: StyleSheet.hairlineWidth + 1,
-    backgroundColor: c.brassDim,
-    opacity: 0.9,
-    marginVertical: 8,
-    alignSelf: 'stretch',
-  },
-  cell: {
+  tab: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
-    paddingVertical: 10,
-    paddingHorizontal: 4,
-    borderRadius: 2,
-    marginVertical: 4,
-    marginHorizontal: 2,
+    gap: 3,
+    paddingVertical: 6,
+    borderRadius: 16,
+    position: 'relative',
   },
-  cellActive: {
-    backgroundColor: c.activeFill,
-    borderWidth: 1,
-    borderColor: c.activeBorder,
-    shadowColor: c.activeFill,
-    shadowOpacity: 0.55,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 6,
+  tabPressed: {
+    opacity: 0.7,
   },
-  cellPressed: {
-    opacity: 0.88,
-    transform: [{ scale: 0.985 }],
-  },
-  activeGlowLine: {
+  indicator: {
     position: 'absolute',
-    top: 5,
-    left: '14%',
-    right: '14%',
+    bottom: 0,
+    width: 20,
     height: 2,
     borderRadius: 1,
-    backgroundColor: 'rgba(255, 234, 210, 0.55)',
+    backgroundColor: appColors.accent,
   },
 });

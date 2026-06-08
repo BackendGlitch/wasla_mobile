@@ -10,24 +10,13 @@ type CentralUser = {
   firstName?: string;
   lastName?: string;
   emailVerified?: boolean;
-  phoneVerified?: boolean;
 };
 
 export type AuthTokenResponse = {
   access_token: string;
-  /** Opaque refresh token; rotate on each `/auth/refresh` call. */
   refresh_token?: string;
-  /** Access JWT lifetime in seconds (when the server sends it). */
   expires_in?: number;
   user: CentralUser;
-};
-
-export const toE164TNPhone = (input: string) => {
-  const raw = String(input ?? '').trim();
-  if (!raw) return '';
-  if (raw.startsWith('+')) return raw.replace(/\s+/g, '');
-  const digits = raw.replace(/[^\d]/g, '');
-  return `+216${digits}`;
 };
 
 const centralApi = axios.create({
@@ -45,7 +34,7 @@ centralApi.interceptors.request.use((config) => {
     return Promise.reject(new Error(resolved.error ?? 'Central server URL is not configured.'));
   }
 
-  config.baseURL = resolved.url;
+  config.baseURL = resolved.url.replace(/\/+$/, '') + '/api/v1';
   breadcrumbCentralBaseUrlResolution(resolved);
   return config;
 });
@@ -82,17 +71,21 @@ export const authApi = {
     return res.data as AuthTokenResponse;
   },
 
-  requestOtp: async (body: { phone?: string; email?: string }) => {
+  loginWithPhone: async (body: { phone: string; password: string }) => {
+    const res = await centralApi.post('/auth/login', body);
+    return res.data as AuthTokenResponse;
+  },
+
+  requestOtp: async (body: { email: string }) => {
     const res = await centralApi.post('/auth/request-otp', body);
     return res.data as { message: string };
   },
 
-  verifyOtp: async (body: { phone?: string; email?: string; otp: string }) => {
+  verifyOtp: async (body: { email: string; otp: string }) => {
     const res = await centralApi.post('/auth/verify-otp', body);
     return res.data as AuthTokenResponse;
   },
 
-  /** Exchange refresh for a new access + refresh pair (server rotates refresh). */
   exchangeRefreshToken: async (refresh_token: string) => {
     const res = await centralApi.post('/auth/refresh', { refresh_token });
     return res.data as AuthTokenResponse;
