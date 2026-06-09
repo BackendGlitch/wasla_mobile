@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView, type WebViewNavigation } from 'react-native-webview';
 import { Text, XStack, YStack } from 'tamagui';
 import { isAxiosError } from 'axios';
+import api from '../../src/lib/api';
 import { confirmBookingInApp, getBooking } from '../../src/lib/bookingApi';
 import { formatCurrency } from '../../src/lib/bookingFlow';
 import { toUserFacingErrorCopy } from '../../src/lib/networkErrors';
@@ -83,23 +84,49 @@ export default function PaymentScreen() {
     }
   }, []);
 
+  const confirmPaymentAfterRedirect = useCallback(async () => {
+    if (!centralBookingId.trim()) return;
+    stopPolling();
+    setPollState('polling');
+
+    try {
+      const result = await api.post(
+        `/bookings/${encodeURIComponent(centralBookingId.trim())}/confirm-payment`,
+        undefined,
+        { __waslaMaxRetries: 2 },
+      );
+      const data = result.data;
+      const t = data?.ticket;
+      if (t?.id) {
+        stopPolling();
+        setPollState('confirmed');
+        setWebViewOpen(false);
+        router.replace({
+          pathname: '/(app)/ticket',
+          params: {
+            ticketId: t.id,
+            bookingId: centralBookingId.trim(),
+          },
+        });
+      }
+    } catch {
+      // If confirm-payment fails (payment not yet processed), fall back to polling
+      startPolling();
+    }
+  }, [centralBookingId, stopPolling, router]);
+
   const startPolling = useCallback(() => {
     if (!centralBookingId.trim()) return;
     stopPolling();
     setPollState('polling');
 
     const poll = async () => {
-      const ac = new AbortController();
-      abortRef.current = ac;
       try {
-        const booking = await getBooking(centralBookingId.trim(), {
-          signal: ac.signal,
-        });
+        const booking = await getBooking(centralBookingId.trim());
         if (booking.status === 'CONFIRMED') {
           stopPolling();
           setPollState('confirmed');
           setWebViewOpen(false);
-          // Navigate to ticket using the confirmed booking
           router.replace({
             pathname: '/(app)/ticket',
             params: { bookingId: centralBookingId.trim() },
@@ -111,7 +138,6 @@ export default function PaymentScreen() {
     };
 
     pollRef.current = setInterval(poll, 2500);
-    // Fire immediately on start
     void poll();
   }, [centralBookingId, stopPolling, router]);
 
@@ -123,14 +149,15 @@ export default function PaymentScreen() {
   const handleWebViewNavigation = useCallback(
     (navState: WebViewNavigation) => {
       const url = navState.url.toLowerCase();
-      // NexaPay redirects after payment completion
+      // NexaPay redirects after payment completion — call confirm-payment to finalize
       if (
         url.includes('/success') ||
         url.includes('payment_success') ||
-        url.includes('checkout/success')
+        url.includes('checkout/success') ||
+        url.includes('pay_url') ||
+        url.includes('intent') // NexaPay may redirect to intent status page
       ) {
-        // Payment page indicates success — start polling for confirmation
-        startPolling();
+        void confirmPaymentAfterRedirect();
       }
       if (
         url.includes('/cancel') ||
@@ -145,7 +172,7 @@ export default function PaymentScreen() {
         );
       }
     },
-    [startPolling, stopPolling],
+    [confirmPaymentAfterRedirect, stopPolling],
   );
 
   // ── Placeholder / fallback confirmation ────────────────────
