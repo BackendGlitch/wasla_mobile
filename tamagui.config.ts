@@ -33,7 +33,7 @@ export const tamaguiConfig = createTamagui({
   tokens: {
     ...defaultConfig.tokens,
     color: {
-      ...defaultConfig.tokens.color,
+      ...(defaultConfig.tokens as any).color,
       primary: waslaColors.primary,
       primaryLight: waslaColors.primaryLight,
       primaryDark: waslaColors.primaryDark,

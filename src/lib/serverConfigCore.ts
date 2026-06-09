@@ -1,6 +1,7 @@
 const ANDROID_EMULATOR_HOST = '10.0.2.2';
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1']);
 const CENTRAL_SERVER_URL_ENV = 'EXPO_PUBLIC_CENTRAL_SERVER_URL';
+const HARDCODED_URL = 'https://api.backendglitch.com';
 
 function stripTrailingSlashes(value: string): string {
   return value.replace(/\/+$/, '');
@@ -71,16 +72,10 @@ function applyDevOnlyEmulatorRewrites(
 export function resolveCentralServerUrlCore(
   options: ResolveCentralServerUrlOptions,
 ): CentralServerUrlResolution {
-  const raw = options.raw?.trim() ?? null;
-  if (!raw) {
-    return {
-      url: null,
-      raw: null,
-      error: `Central server URL is missing. Set ${CENTRAL_SERVER_URL_ENV} to an absolute http(s) URL.`,
-    };
-  }
-
-  const cleaned = stripTrailingSlashes(raw);
+  const raw = options.raw?.trim() || null;
+  // Fall back to hardcoded production URL if env var is not set
+  const effective = raw || HARDCODED_URL;
+  const cleaned = stripTrailingSlashes(effective);
   const parsed = parseHttpUrl(cleaned);
   if (!parsed.url) {
     return {
@@ -90,10 +85,14 @@ export function resolveCentralServerUrlCore(
     };
   }
 
-  const rewritten = applyDevOnlyEmulatorRewrites(parsed.url, options.platformOS, options.isDev);
+  const rewritten = applyDevOnlyEmulatorRewrites(
+    parsed.url,
+    options.platformOS,
+    options.isDev,
+  );
   return {
     url: stripTrailingSlashes(rewritten.toString()),
-    raw,
+    raw: raw || HARDCODED_URL,
     error: null,
   };
 }

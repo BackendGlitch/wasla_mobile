@@ -1,6 +1,6 @@
 import { io, type Socket } from 'socket.io-client';
 import { useBookingRoutesLiveStore } from '../store/bookingRoutesLiveStore';
-import { useBookingStore, type Ticket } from '../store/bookingStore';
+import { useBookingStore, type TicketRecord } from '../store/bookingStore';
 import { useRealtimeStore } from '../store/realtimeStore';
 import { useStationStore } from '../store/stationStore';
 import { resolveCentralServerUrl } from './serverConfig';

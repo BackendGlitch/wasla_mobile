@@ -68,7 +68,9 @@ export default function SignInScreen() {
     setPhoneError('');
     setPhoneLoading(true);
     try {
-      const phoneE164 = raw.startsWith('+') ? raw : `+216${raw.replace(/[^\d]/g, '')}`;
+      let digits = raw.replace(/[^\d]/g, '');
+if (digits.startsWith('0')) digits = digits.slice(1);
+const phoneE164 = raw.startsWith('+') ? raw.replace(/\s+/g, '') : `+216${digits}`;
       const result = await authApi.loginWithPhone({
         phone: phoneE164,
         password: phonePassword,
@@ -111,7 +113,7 @@ export default function SignInScreen() {
             paddingHorizontal: 20,
             paddingTop: Math.max(insets.top, 12) + 8,
             paddingBottom: Math.max(insets.bottom, 20) + 24,
-          }}
+          } as any}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >

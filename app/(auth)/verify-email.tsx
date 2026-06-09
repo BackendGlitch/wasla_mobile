@@ -113,7 +113,7 @@ export default function VerifyEmailScreen() {
     <AuthBackdrop variant="green">
       <StatusBar style="light" />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView flex={1} contentContainerStyle={{ paddingHorizontal: 20, paddingTop: Math.max(insets.top, 12) + 8, paddingBottom: Math.max(insets.bottom, 20) + 32 }} keyboardShouldPersistTaps="handled">
+        <ScrollView flex={1} contentContainerStyle={{ paddingHorizontal: 20, paddingTop: Math.max(insets.top, 12) + 8, paddingBottom: Math.max(insets.bottom, 20) + 32 } as any} keyboardShouldPersistTaps="handled">
           <Pressable onPress={goBack} style={{ alignSelf: 'flex-start', paddingVertical: 8 }}>
             <XStack items="center" gap="$2">
               <MaterialCommunityIcons name="chevron-left" size={22} color={authColors.textSecondary} />

@@ -97,7 +97,9 @@ export default function SignUpScreen() {
 
     if (step === 1) {
       const raw = getValues('phone').trim().replace(/\s+/g, '');
-      const phoneE164 = raw.startsWith('+') ? raw : `+216${raw.replace(/[^\d]/g, '')}`;
+      let digits2 = raw.replace(/[^\d]/g, '');
+if (digits2.startsWith('0')) digits2 = digits2.slice(1);
+const phoneE164 = raw.startsWith('+') ? raw.replace(/\s+/g, '') : `+216${digits2}`;
       try {
         const avail = await authApi.checkAvailability({
           email: getValues('email').trim().toLowerCase(),
@@ -133,7 +135,9 @@ export default function SignUpScreen() {
     setSubmitting(true);
     try {
       const raw = data.phone.trim().replace(/\s+/g, '');
-      const phoneE164 = raw.startsWith('+') ? raw : `+216${raw.replace(/[^\d]/g, '')}`;
+      let digits2 = raw.replace(/[^\d]/g, '');
+if (digits2.startsWith('0')) digits2 = digits2.slice(1);
+const phoneE164 = raw.startsWith('+') ? raw.replace(/\s+/g, '') : `+216${digits2}`;
       await authApi.register({
         email: data.email.trim().toLowerCase(),
         phone: phoneE164,

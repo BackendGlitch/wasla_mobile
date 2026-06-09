@@ -16,6 +16,7 @@ export const authColors = {
   textMuted: '#556580',
 
   accent: '#D4A853',
+  accentDark: '#8B6914',
   accentSoft: 'rgba(212, 168, 83, 0.14)',
 
   error: '#EF4444',
