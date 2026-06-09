@@ -16,6 +16,7 @@ export default function BookingScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const setDraft = useBookingStore((state) => state.setDraft);
+  const addTicket = useBookingStore((state) => state.addTicket);
   const contentPadTop = Math.max(insets.top + 16, 56);
 
   const navigateBack = () => {
@@ -149,6 +150,32 @@ export default function BookingScreen() {
 
       if (!centralBookingId) {
         throw new Error('Server did not return a booking reference.');
+      }
+
+      // Placeholder mode: ticket returned immediately — skip payment, go to ticket
+      const ticket = (res as any)?.ticket;
+      if (ticket?.id) {
+        addTicket({
+          id: ticket.id,
+          qrValue: ticket.qr_payload ?? '',
+          issuedAt: new Date().toISOString(),
+          paymentStatus: 'confirmed',
+          stationId: ticket.station_id ?? sid,
+          stationName,
+          routeId: rid,
+          routeName,
+          departureName,
+          destinationName,
+          availableSeats,
+          seatCount: ticket.seats_booked ?? seatCount,
+          pricePerSeat,
+          totalPrice,
+          etdIso,
+          etdLabel,
+          vehiclePlate: ticket.vehicle_plate ?? 'Assigned',
+        });
+        router.replace({ pathname: '/(app)/ticket', params: { ticketId: ticket.id } });
+        return;
       }
 
       const paymentUrl =

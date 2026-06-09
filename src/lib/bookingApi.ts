@@ -28,6 +28,8 @@ export const createBooking = async (
     station_id: string;
     destination_id: string;
     seats_booked: number;
+    /** Total amount in millimes for NexaPay (1 TND = 1000) */
+    amount?: number;
     /** Mirrors for Nest/class-transformer / proxies that expect camelCase */
     stationId?: string;
     destinationId?: string;
