@@ -149,13 +149,13 @@ export default function PaymentScreen() {
   const handleWebViewNavigation = useCallback(
     (navState: WebViewNavigation) => {
       const url = navState.url.toLowerCase();
-      // NexaPay redirects after payment completion — call confirm-payment to finalize
+      // NexaPay redirects after payment — detect return page or success patterns
       if (
+        url.includes('/payments/return') ||
+        url.includes('payment-return') ||
         url.includes('/success') ||
         url.includes('payment_success') ||
-        url.includes('checkout/success') ||
-        url.includes('pay_url') ||
-        url.includes('intent') // NexaPay may redirect to intent status page
+        url.includes('status=succeeded')
       ) {
         void confirmPaymentAfterRedirect();
       }

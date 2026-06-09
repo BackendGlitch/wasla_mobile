@@ -130,12 +130,15 @@ export default function BookingScreen() {
 
     setSubmitting(true);
     try {
+      // NexaPay uses millimes — convert TND to millimes
+      const amountInMillimes = Math.round(totalPrice * 1000);
       const res = await createBooking({
         station_id: sid,
         stationId: sid,
         destination_id: rid,
         destinationId: rid,
         seats_booked: seatCount,
+        amount: amountInMillimes,
       });
       const centralBookingId =
         typeof res?.booking_id === 'string'
