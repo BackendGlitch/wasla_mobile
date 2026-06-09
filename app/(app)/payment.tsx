@@ -98,6 +98,7 @@ export default function PaymentScreen() {
       const data = result.data;
       const t = data?.ticket;
       if (t?.id) {
+        // Payment confirmed — got ticket!
         stopPolling();
         setPollState('confirmed');
         setWebViewOpen(false);
@@ -108,9 +109,12 @@ export default function PaymentScreen() {
             bookingId: centralBookingId.trim(),
           },
         });
+      } else if (data?.status === 'pending') {
+        // NexaPay is still processing — keep polling
+        startPolling();
       }
     } catch {
-      // If confirm-payment fails (payment not yet processed), fall back to polling
+      // Network error — keep polling
       startPolling();
     }
   }, [centralBookingId, stopPolling, router]);
