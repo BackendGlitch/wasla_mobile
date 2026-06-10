@@ -17,7 +17,7 @@ import { getStationRoutes, type RouteData } from '../../src/lib/routesApi';
 import { DestinationQueueRow } from '../../src/components/booking/DestinationQueueRow';
 import { BrandLogo } from '../../src/components/BrandLogo';
 import { buildBookingRouteMeta } from '../../src/lib/bookingFlow';
-import { cancelBooking } from '../../src/lib/bookingApi';
+import { cancelBooking, getMyBookings } from '../../src/lib/bookingApi';
 import { appColors } from '../../src/theme/appTheme';
 import { useBookingRoutesLiveStore, useBookingStore, useConnectivityStore, useRealtimeStore, useStationStore, type StationWithDistance } from '../../src/store';
 import { SkeletonList } from '../../src/components/Skeleton';
@@ -245,6 +245,41 @@ export default function MainScreen() {
   const { clearLiveMetricsForStation } = useBookingRoutesLiveStore();
   const { isOffline, bumpReconnectEpoch } = useConnectivityStore();
   const realtimeStatus = useRealtimeStore((s) => s.status);
+
+  // Fetch user bookings on mount to populate history
+  useEffect(() => {
+    let cancelled = false;
+    getMyBookings().then((bookings) => {
+      if (cancelled || !Array.isArray(bookings)) return;
+      const existingIds = new Set(useBookingStore.getState().tickets.map((t) => t.id));
+      const newTickets = bookings
+        .filter((b: any) => b.status === 'CONFIRMED' && !existingIds.has(b.id))
+        .map((b: any) => ({
+          id: b.id,
+          qrValue: b.id,
+          issuedAt: b.created_at,
+          paymentStatus: 'confirmed' as const,
+          state: (new Date(b.created_at).getTime() > Date.now() - 86400000 ? 'active' : 'used') as any,
+          stationId: b.station_id,
+          stationName: b.station_id,
+          routeId: b.destination_id,
+          routeName: b.destination_id,
+          departureName: b.station_id,
+          destinationName: b.destination_id.replace('dest_', '').replace(/_/g, ' '),
+          availableSeats: 0,
+          seatCount: b.seats_booked || 1,
+          pricePerSeat: 0,
+          totalPrice: 0,
+          etdIso: b.created_at,
+          etdLabel: new Date(b.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          vehiclePlate: b.vehicle_plate || 'TBA',
+        }));
+      if (newTickets.length > 0) {
+        useBookingStore.setState((s) => ({ tickets: [...newTickets, ...s.tickets] }));
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   // Location
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);

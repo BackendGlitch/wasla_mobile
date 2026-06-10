@@ -13,6 +13,12 @@ export type BookingStatusResponse = {
   created_at: string;
 };
 
+/** Fetch all bookings for the authenticated user. */
+export const getMyBookings = async (): Promise<any[]> => {
+  const response = await api.get('/bookings/mine');
+  return response.data;
+};
+
 export const getBooking = async (
   bookingId: string,
   options?: { signal?: AbortSignal },
