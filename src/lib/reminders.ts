@@ -1,48 +1,49 @@
-import * as Notifications from 'expo-notifications';
-import dayjs from 'dayjs';
 import { Platform } from 'react-native';
+import dayjs from 'dayjs';
+
+let Notifications: any = null;
+try {
+  Notifications = require('expo-notifications');
+} catch { /* Expo Go — notifications unavailable */ }
 
 /** Schedule a departure reminder 15 minutes before ETD. */
 export async function scheduleDepartureReminder(ticket: {
-  id: string;
-  stationName: string;
-  destinationName: string;
-  etdIso?: string;
-  etdLabel?: string;
-  vehiclePlate?: string;
+  id: string; stationName: string; destinationName: string;
+  etdIso?: string; etdLabel?: string; vehiclePlate?: string;
 }) {
+  if (!Notifications) return;
   const etd = dayjs(ticket.etdIso);
   if (!etd.isValid()) return;
-
   const triggerTime = etd.subtract(15, 'minute');
-  if (triggerTime.isBefore(dayjs())) return; // Too late to schedule
+  if (triggerTime.isBefore(dayjs())) return;
 
-  const { status } = await Notifications.requestPermissionsAsync();
-  if (status !== 'granted') return;
-
-  await Notifications.scheduleNotificationAsync({
-    identifier: `departure-${ticket.id}`,
-    content: {
-      title: `Departure in 15 min — ${ticket.stationName}`,
-      body: `${ticket.destinationName} · ${ticket.etdLabel || etd.format('HH:mm')} · Plate ${ticket.vehiclePlate || 'TBA'}`,
-      sound: 'default',
-      ...(Platform.OS === 'android' ? { channelId: 'departures' } : {}),
-    },
-    trigger: { date: triggerTime.toDate() } as Notifications.NotificationTriggerInput,
-  });
+  try {
+    const { status } = await Notifications.requestPermissionsAsync();
+    if (status !== 'granted') return;
+    await Notifications.scheduleNotificationAsync({
+      identifier: `departure-${ticket.id}`,
+      content: {
+        title: `Departure in 15 min — ${ticket.stationName}`,
+        body: `${ticket.destinationName} · ${ticket.etdLabel || etd.format('HH:mm')} · Plate ${ticket.vehiclePlate || 'TBA'}`,
+        sound: 'default',
+        ...(Platform.OS === 'android' ? { channelId: 'departures' } : {}),
+      },
+      trigger: { date: triggerTime.toDate() } as any,
+    });
+  } catch { /* silently skip in Expo Go */ }
 }
 
-/** Cancel a reminder when ticket is cancelled. */
 export async function cancelDepartureReminder(ticketId: string) {
-  await Notifications.cancelScheduledNotificationAsync(`departure-${ticketId}`);
+  if (!Notifications) return;
+  try { await Notifications.cancelScheduledNotificationAsync(`departure-${ticketId}`); } catch { /* */ }
 }
 
-/** Initialize notification channel for Android. */
 export async function initReminders() {
-  if (Platform.OS === 'android') {
+  if (!Notifications || Platform.OS !== 'android') return;
+  try {
     await Notifications.setNotificationChannelAsync('departures', {
       name: 'Departure Reminders',
-      importance: Notifications.AndroidImportance.HIGH,
+      importance: Notifications.AndroidImportance?.HIGH ?? 4,
     });
-  }
+  } catch { /* */ }
 }
