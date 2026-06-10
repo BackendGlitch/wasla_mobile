@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import {
-  ActivityIndicator, Animated, Dimensions, FlatList, Platform, Pressable,
-  RefreshControl, ScrollView, StyleSheet, View,
+  ActivityIndicator, Alert, Animated, Dimensions, FlatList, Platform, Pressable,
+  RefreshControl, ScrollView, StyleSheet, TextInput, View,
 } from 'react-native';
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
@@ -17,6 +17,7 @@ import { getStationRoutes, type RouteData } from '../../src/lib/routesApi';
 import { DestinationQueueRow } from '../../src/components/booking/DestinationQueueRow';
 import { BrandLogo } from '../../src/components/BrandLogo';
 import { buildBookingRouteMeta } from '../../src/lib/bookingFlow';
+import { cancelBooking } from '../../src/lib/bookingApi';
 import { appColors } from '../../src/theme/appTheme';
 import { useBookingRoutesLiveStore, useBookingStore, useConnectivityStore, useRealtimeStore, useStationStore, type StationWithDistance } from '../../src/store';
 
@@ -56,7 +57,7 @@ function CountdownTimer({ targetIso }: { targetIso: string }) {
 }
 
 // ─── Ticket Card (single swipeable card) ────────────────────────
-function TicketCard({ ticket, onPress, width }: { ticket: any; onPress: () => void; width: number }) {
+function TicketCard({ ticket, onPress, onCancel, width }: { ticket: any; onPress: () => void; onCancel?: () => void; width: number }) {
   const from = ticket.departureName || ticket.stationName || '?';
   const to = ticket.destinationName || ticket.routeName || '?';
   const plate = ticket.vehiclePlate || 'TBA';
@@ -128,6 +129,11 @@ function TicketCard({ ticket, onPress, width }: { ticket: any; onPress: () => vo
         <View style={ticketStyles.statusStrip}>
           <View style={ticketStyles.statusDot} />
           <Text color="#22C55E" fontSize={10} fontWeight="600">Confirmed</Text>
+          {onCancel && (
+            <Pressable onPress={onCancel} style={{ marginLeft: 'auto' }} hitSlop={8}>
+              <MaterialCommunityIcons name="close-circle-outline" size={18} color="#EF4444" />
+            </Pressable>
+          )}
         </View>
       </View>
     </Pressable>
@@ -292,7 +298,31 @@ export default function MainScreen() {
   }, [selectedRouteId, draftStation, fetchedRoutes, router]);
 
   const [refreshing, setRefreshing] = useState(false);
+  const [stationSearch, setStationSearch] = useState('');
   const onRefresh = useCallback(async () => { setRefreshing(true); await resolveLocation(); await stationsQuery.refetch(); bumpReconnectEpoch(); setRefreshing(false); }, []);
+
+  // Filtered stations for search
+  const filteredStations = useMemo(() => {
+    if (!stationSearch.trim()) return nearbyStations;
+    const q = stationSearch.toLowerCase();
+    return nearbyStations.filter((s) => s.name.toLowerCase().includes(q));
+  }, [nearbyStations, stationSearch]);
+
+  // Cancel a ticket
+  const handleCancelTicket = useCallback((ticketId: string) => {
+    Alert.alert('Cancel this trip?', 'The seat hold will be released.', [
+      { text: 'Keep it', style: 'cancel' },
+      {
+        text: 'Cancel trip', style: 'destructive',
+        onPress: async () => {
+          try {
+            await cancelBooking(ticketId);
+            useBookingStore.getState().tickets = useBookingStore.getState().tickets.filter((t: any) => t.id !== ticketId);
+          } catch { Alert.alert('Error', 'Could not cancel. Try again.'); }
+        },
+      },
+    ]);
+  }, []);
 
   const topPad = Math.max(insets.top + 10, 52);
   const bottomPad = Math.max(insets.bottom, 16) + 100;
@@ -339,7 +369,10 @@ export default function MainScreen() {
                 onMomentumScrollEnd={(e) => setPageIndex(Math.round(e.nativeEvent.contentOffset.x / (CARD_WIDTH + 12)))}
                 keyExtractor={(t) => t.id}
                 renderItem={({ item: t }) => (
-                  <TicketCard ticket={t} width={CARD_WIDTH} onPress={() => router.push({ pathname: '/(app)/ticket', params: { ticketId: t.id } })} />
+                  <TicketCard ticket={t} width={CARD_WIDTH}
+                    onPress={() => router.push({ pathname: '/(app)/ticket', params: { ticketId: t.id } })}
+                    onCancel={() => handleCancelTicket(t.id)}
+                  />
                 )}
               />
               {/* Page dots */}
@@ -409,9 +442,24 @@ export default function MainScreen() {
           <YStack flex={1} px={16} pt={4}>
             {bookingStep === 'station' ? (
               <>
-                <Text color="#F0F4FF" fontSize={17} fontWeight="700" mb={12}>Pick departure station</Text>
+                <Text color="#F0F4FF" fontSize={17} fontWeight="700" mb={8}>Pick departure station</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#111D2E', borderRadius: 12, paddingHorizontal: 12, marginBottom: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' }}>
+                  <MaterialCommunityIcons name="magnify" size={18} color="#556580" />
+                  <TextInput
+                    style={{ flex: 1, color: '#F0F4FF', paddingVertical: 12, paddingHorizontal: 8, fontSize: 14 }}
+                    placeholder="Search stations..."
+                    placeholderTextColor="#3A4A60"
+                    value={stationSearch}
+                    onChangeText={setStationSearch}
+                  />
+                  {stationSearch.length > 0 && (
+                    <Pressable onPress={() => setStationSearch('')}>
+                      <MaterialCommunityIcons name="close-circle" size={18} color="#556580" />
+                    </Pressable>
+                  )}
+                </View>
                 <BottomSheetFlatList
-                  data={nearbyStations}
+                  data={filteredStations}
                   keyExtractor={(item: StationWithDistance) => item.id}
                   renderItem={({ item }: { item: StationWithDistance }) => (
                     <Pressable onPress={() => fetchRoutes(item)} style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 16, borderRadius: 14, backgroundColor: '#0D1525', marginBottom: 6 }, pressed && { opacity: 0.7 }]}>
