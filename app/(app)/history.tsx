@@ -74,39 +74,44 @@ export default function HistoryScreen() {
           grouped.map(([date, items]) => (
             <YStack key={date} mb={16}>
               <Text color="#556580" fontSize={10} fontWeight="600" letterSpacing={1} mb={8}>{date.toUpperCase()}</Text>
-              {items.map((t) => (
+              {items.map((t) => {
+                const state: string = (t as any).state || 'used';
+                const isActive = state === 'active';
+                const isExpired = state === 'expired';
+                const accentColor = isActive ? '#22C55E' : isExpired ? '#EF4444' : '#556580';
+                const bgColor = isActive ? 'rgba(34,197,94,0.04)' : isExpired ? 'rgba(239,68,68,0.04)' : 'transparent';
+                const icon = isActive ? 'clock-outline' : isExpired ? 'timer-off-outline' : 'check-circle-outline';
+                const stateLabel = isActive ? 'Active' : isExpired ? 'Expired' : 'Used';
+                return (
                 <Pressable
                   key={t.id}
                   onPress={() => router.push({ pathname: '/(app)/ticket', params: { ticketId: t.id } })}
-                  style={({ pressed }) => [hs.card, pressed && { opacity: 0.7 }]}
+                  style={({ pressed }) => [hs.card, { backgroundColor: bgColor }, pressed && { opacity: 0.7 }]}
                 >
-                  <View style={hs.cardLeft}>
-                    <View style={hs.routeDot} />
+                  <View style={[hs.cardLeft, { backgroundColor: accentColor }]}>
+                    <View style={[hs.routeDot, { backgroundColor: accentColor }]} />
                     <View style={hs.routeLine} />
                   </View>
                   <YStack flex={1} gap={4}>
                     <XStack items="center" justify="space-between">
-                      <Text color="#F0F4FF" fontSize={14} fontWeight="600">{t.stationName} → {t.destinationName}</Text>
-                      <Text color="#D4A853" fontSize={12} fontWeight="700">{t.totalPrice} TND</Text>
+                      <XStack gap={6} items="center">
+                        <MaterialCommunityIcons name={icon as any} size={12} color={accentColor} />
+                        <Text color="#F0F4FF" fontSize={14} fontWeight="600">{t.stationName} → {t.destinationName}</Text>
+                      </XStack>
+                      <Text color={accentColor} fontSize={12} fontWeight="700">{t.totalPrice} TND</Text>
                     </XStack>
                     <XStack gap={12}>
-                      <XStack gap={4} items="center">
-                        <MaterialCommunityIcons name="clock-outline" size={10} color="#556580" />
-                        <Text color="#556580" fontSize={11}>{t.etdLabel}</Text>
-                      </XStack>
-                      <XStack gap={4} items="center">
-                        <MaterialCommunityIcons name="card-bulleted" size={10} color="#556580" />
-                        <Text color="#556580" fontSize={11}>{t.vehiclePlate}</Text>
-                      </XStack>
-                      <XStack gap={4} items="center">
-                        <MaterialCommunityIcons name="account" size={10} color="#556580" />
-                        <Text color="#556580" fontSize={11}>{t.seatCount}</Text>
-                      </XStack>
+                      <Text color="#556580" fontSize={11}>{t.etdLabel}</Text>
+                      <Text color="#556580" fontSize={11}>{t.vehiclePlate}</Text>
+                      <Text color="#556580" fontSize={11}>{t.seatCount} seat{t.seatCount !== 1 ? 's' : ''}</Text>
+                      <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: bgColor }}>
+                        <Text color={accentColor} fontSize={9} fontWeight="700">{stateLabel}</Text>
+                      </View>
                     </XStack>
                   </YStack>
                   <MaterialCommunityIcons name="chevron-right" size={16} color="#3A4A60" />
                 </Pressable>
-              ))}
+              )})}
             </YStack>
           ))
         )}

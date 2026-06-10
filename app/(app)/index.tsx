@@ -240,7 +240,7 @@ export default function MainScreen() {
   const tabBarTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Stores
-  const tickets = useBookingStore((s) => s.tickets);
+  const tickets = useBookingStore((s) => s.tickets).filter((t: any) => t.state === 'active');
   const { stations, nearbyStations, setStations, setNearbyStations } = useStationStore();
   const { clearLiveMetricsForStation } = useBookingRoutesLiveStore();
   const { isOffline, bumpReconnectEpoch } = useConnectivityStore();
@@ -252,28 +252,29 @@ export default function MainScreen() {
     getMyBookings().then((bookings) => {
       if (cancelled || !Array.isArray(bookings)) return;
       const existingIds = new Set(useBookingStore.getState().tickets.map((t) => t.id));
+      const now = Date.now();
       const newTickets = bookings
         .filter((b: any) => b.status === 'CONFIRMED' && !existingIds.has(b.id))
-        .map((b: any) => ({
-          id: b.id,
-          qrValue: b.id,
-          issuedAt: b.created_at,
-          paymentStatus: 'confirmed' as const,
-          state: (new Date(b.created_at).getTime() > Date.now() - 86400000 ? 'active' : 'used') as any,
-          stationId: b.station_id,
-          stationName: b.station_id,
-          routeId: b.destination_id,
-          routeName: b.destination_id,
-          departureName: b.station_id,
-          destinationName: b.destination_id.replace('dest_', '').replace(/_/g, ' '),
-          availableSeats: 0,
-          seatCount: b.seats_booked || 1,
-          pricePerSeat: 0,
-          totalPrice: 0,
-          etdIso: b.created_at,
-          etdLabel: new Date(b.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          vehiclePlate: b.vehicle_plate || 'TBA',
-        }));
+        .map((b: any) => {
+          const created = new Date(b.created_at).getTime();
+          const age = now - created;
+          const state = age < 3_600_000 ? 'active' : age < 86_400_000 ? 'expired' : 'used';
+          const dest = (b.destination_id || '').replace('dest_', '').replace(/_/g, ' ');
+          const stn = (b.station_id || '').replace(/_/g, ' ');
+          return {
+            id: b.id, qrValue: b.id, issuedAt: b.created_at,
+            paymentStatus: 'confirmed' as const, state: state as any,
+            stationId: b.station_id, stationName: stn,
+            routeId: b.destination_id, routeName: dest,
+            departureName: stn, destinationName: dest,
+            availableSeats: 0, seatCount: b.seats_booked || 1,
+            pricePerSeat: b.price_per_seat || 25,
+            totalPrice: b.amount || (b.seats_booked * 25),
+            etdIso: b.created_at,
+            etdLabel: new Date(b.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            vehiclePlate: b.vehicle_plate || 'TBA',
+          };
+        });
       if (newTickets.length > 0) {
         useBookingStore.setState((s) => ({ tickets: [...newTickets, ...s.tickets] }));
       }
