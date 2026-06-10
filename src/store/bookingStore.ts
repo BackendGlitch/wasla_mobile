@@ -16,11 +16,14 @@ export type BookingDraft = {
   vehiclePlate: string;
 };
 
+export type TicketState = 'active' | 'expired' | 'used';
+
 export type TicketRecord = BookingDraft & {
   id: string;
   qrValue: string;
   issuedAt: string;
   paymentStatus: 'confirmed';
+  state: TicketState;
 };
 
 interface BookingState {
@@ -29,6 +32,8 @@ interface BookingState {
   setDraft: (draft: BookingDraft) => void;
   clearDraft: () => void;
   addTicket: (ticket: TicketRecord) => void;
+  markTicketUsed: (ticketId: string) => void;
+  expireTickets: () => void;
 }
 
 export const useBookingStore = create<BookingState>((set) => ({
@@ -38,7 +43,21 @@ export const useBookingStore = create<BookingState>((set) => ({
   clearDraft: () => set({ draft: null }),
   addTicket: (ticket) =>
     set((state) => ({
-      tickets: [ticket, ...state.tickets],
+      tickets: [{ ...ticket, state: 'active' as const }, ...state.tickets],
       draft: null,
+    })),
+  markTicketUsed: (id) =>
+    set((state) => ({
+      tickets: state.tickets.map((t) =>
+        t.id === id && t.state === 'active' ? { ...t, state: 'used' as const } : t,
+      ),
+    })),
+  expireTickets: () =>
+    set((state) => ({
+      tickets: state.tickets.map((t) =>
+        t.state === 'active' && new Date(t.etdIso).getTime() < Date.now()
+          ? { ...t, state: 'expired' as const }
+          : t,
+      ),
     })),
 }));

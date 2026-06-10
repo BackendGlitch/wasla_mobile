@@ -214,7 +214,7 @@ export default function PaymentScreen() {
         id: t.id,
         qrValue: t.qr_payload,
         issuedAt,
-        paymentStatus: 'confirmed',
+        paymentStatus: 'confirmed', state: 'active',
         stationId: t.station_id ?? stationId,
         stationName,
         routeId,

@@ -161,6 +161,7 @@ export default function BookingScreen() {
           qrValue: ticket.qr_payload ?? '',
           issuedAt: new Date().toISOString(),
           paymentStatus: 'confirmed' as const,
+          state: 'active' as const,
           stationId: ticket.station_id ?? sid,
           stationName,
           routeId: rid,

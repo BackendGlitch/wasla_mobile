@@ -192,7 +192,7 @@ export const initCentralRealtime = (): Socket | null => {
         id: t.id!,
         qrValue: t.qr_payload!,
         issuedAt: t.created_at ?? new Date().toISOString(),
-        paymentStatus: 'confirmed',
+        paymentStatus: 'confirmed', state: 'active',
         stationId: t.station_id ?? '',
         stationName: '',
         routeId: '',

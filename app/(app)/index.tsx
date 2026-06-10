@@ -59,6 +59,7 @@ function CountdownTimer({ targetIso }: { targetIso: string }) {
 
 // ─── Ticket Card (single swipeable card) ────────────────────────
 function TicketCard({ ticket, onPress, onCancel, width }: { ticket: any; onPress: () => void; onCancel?: () => void; width: number }) {
+  const state: 'active' | 'expired' | 'used' = ticket.state || 'active';
   const from = ticket.departureName || ticket.stationName || '?';
   const to = ticket.destinationName || ticket.routeName || '?';
   const plate = ticket.vehiclePlate || 'TBA';
@@ -66,49 +67,66 @@ function TicketCard({ ticket, onPress, onCancel, width }: { ticket: any; onPress
   const etdIso = ticket.etdIso || new Date().toISOString();
   const issued = ticket.issuedAt ? dayjs(ticket.issuedAt).format('HH:mm') : '';
 
+  const isActive = state === 'active';
+  const isExpired = state === 'expired';
+  const isUsed = state === 'used';
+
+  // State-based styling
+  const cardBorder = isActive ? 'rgba(212,168,83,0.12)' : isExpired ? 'rgba(239,68,68,0.15)' : 'rgba(255,255,255,0.04)';
+  const accentColor = isActive ? '#D4A853' : isExpired ? '#EF4444' : '#556580';
+  const bgColor = isExpired ? '#0D1525' : isUsed ? '#0F1119' : '#0D1525';
+  const statusLabel = isActive ? 'Active' : isExpired ? 'Expired' : 'Used';
+  const statusColor = isActive ? '#22C55E' : isExpired ? '#EF4444' : '#556580';
+  const statusBg = isActive ? 'rgba(34,197,94,0.06)' : isExpired ? 'rgba(239,68,68,0.06)' : 'rgba(85,101,128,0.04)';
+  const iconName = isActive ? 'ticket-confirmation' : isExpired ? 'clock-alert-outline' : 'ticket-outline';
+  const iconBg = isActive ? '#D4A853' : isExpired ? '#EF4444' : '#3A4A60';
+
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [{ width, marginRight: 12 }, pressed && { opacity: 0.95 }]}>
-      <View style={ticketStyles.card}>
-        {/* Header with gradient feel */}
+      <View style={[ticketStyles.card, { borderColor: cardBorder, backgroundColor: bgColor }]}>
+        {/* Expired overlay pattern */}
+        {isExpired && <View style={ticketStyles.expiredOverlay} pointerEvents="none" />}
+
         <View style={ticketStyles.header}>
           <XStack items="center" justify="space-between">
             <XStack gap="$2" items="center">
-              <View style={ticketStyles.iconBox}>
-                <MaterialCommunityIcons name="ticket-confirmation" size={15} color="#0A0F19" />
+              <View style={[ticketStyles.iconBox, { backgroundColor: iconBg }]}>
+                <MaterialCommunityIcons name={iconName} size={15} color={isUsed ? '#8899B4' : '#0A0F19'} />
               </View>
               <YStack gap={1}>
-                <Text color="#F0F4FF" fontSize={13} fontWeight="700">Active Ticket</Text>
-                <Text color="#556580" fontSize={10}>{issued && `Booked ${issued}`}</Text>
+                <Text color={isActive ? '#F0F4FF' : isExpired ? '#EF4444' : '#8899B4'} fontSize={13} fontWeight="700">{statusLabel} Ticket</Text>
+                {isUsed && <Text color="#556580" fontSize={10}>{issued && `Used ${issued}`}</Text>}
+                {isExpired && <Text color="#EF4444" fontSize={10}>Departed {dayjs(etdIso).format('HH:mm')}</Text>}
               </YStack>
             </XStack>
-            <CountdownTimer targetIso={etdIso} />
+            {isActive ? <CountdownTimer targetIso={etdIso} /> : (
+              <MaterialCommunityIcons name={isExpired ? 'timer-off-outline' : 'check-circle-outline'} size={20} color={statusColor} />
+            )}
           </XStack>
         </View>
 
-        {/* Route visualization */}
+        {/* Route */}
         <View style={ticketStyles.routeSection}>
-          <YStack flex={1} gap={4}>
+          <YStack flex={1} gap={4} opacity={isActive ? 1 : 0.5}>
             <Text color="#556580" fontSize={9} fontWeight="600" letterSpacing={1}>DEPART</Text>
-            <Text color="#F0F4FF" fontSize={20} fontWeight="800" letterSpacing={-0.3} numberOfLines={1}>{from}</Text>
+            <Text color={isActive ? '#F0F4FF' : '#556580'} fontSize={20} fontWeight="800" letterSpacing={-0.3} numberOfLines={1}>{from}</Text>
             <Text color="#556580" fontSize={11}>{dayjs(etdIso).format('HH:mm')}</Text>
           </YStack>
-
           <View style={ticketStyles.routeVis}>
-            <View style={ticketStyles.routeDotStart} />
+            <View style={[ticketStyles.routeDotStart, { backgroundColor: isActive ? '#22C55E' : statusColor }]} />
             <View style={ticketStyles.routeLine} />
-            <MaterialCommunityIcons name="bus" size={18} color="#D4A853" />
+            <MaterialCommunityIcons name="bus" size={18} color={accentColor} />
             <View style={ticketStyles.routeLine} />
-            <View style={ticketStyles.routeDotEnd} />
+            <View style={[ticketStyles.routeDotEnd, { backgroundColor: accentColor }]} />
           </View>
-
-          <YStack flex={1} gap={4} items="flex-end">
+          <YStack flex={1} gap={4} items="flex-end" opacity={isActive ? 1 : 0.5}>
             <Text color="#556580" fontSize={9} fontWeight="600" letterSpacing={1}>ARRIVE</Text>
-            <Text color="#F0F4FF" fontSize={20} fontWeight="800" letterSpacing={-0.3} text="right" numberOfLines={1}>{to}</Text>
+            <Text color={isActive ? '#F0F4FF' : '#556580'} fontSize={20} fontWeight="800" letterSpacing={-0.3} text="right" numberOfLines={1}>{to}</Text>
             <Text color="#556580" fontSize={11}>~{Math.floor(Math.random() * 45 + 15)}min ride</Text>
           </YStack>
         </View>
 
-        {/* Footer details */}
+        {/* Footer */}
         <View style={ticketStyles.footer}>
           <View style={ticketStyles.footerItem}>
             <MaterialCommunityIcons name="card-bulleted" size={13} color="#556580" />
@@ -121,16 +139,16 @@ function TicketCard({ ticket, onPress, onCancel, width }: { ticket: any; onPress
           </View>
           <View style={ticketStyles.footerDiv} />
           <Pressable onPress={onPress} style={ticketStyles.qrBadge}>
-            <MaterialCommunityIcons name="qrcode" size={16} color="#D4A853" />
-            <Text color="#D4A853" fontSize={10} fontWeight="700">VIEW</Text>
+            <MaterialCommunityIcons name="qrcode" size={16} color={accentColor} />
+            <Text color={accentColor} fontSize={10} fontWeight="700">VIEW</Text>
           </Pressable>
         </View>
 
         {/* Status strip */}
-        <View style={ticketStyles.statusStrip}>
-          <View style={ticketStyles.statusDot} />
-          <Text color="#22C55E" fontSize={10} fontWeight="600">Confirmed</Text>
-          {onCancel && (
+        <View style={[ticketStyles.statusStrip, { backgroundColor: statusBg, borderTopColor: isActive ? 'rgba(34,197,94,0.1)' : isExpired ? 'rgba(239,68,68,0.1)' : 'rgba(255,255,255,0.02)' }]}>
+          <View style={[ticketStyles.statusDot, { backgroundColor: statusColor }]} />
+          <Text color={statusColor} fontSize={10} fontWeight="600">{statusLabel}</Text>
+          {isActive && onCancel && (
             <Pressable onPress={onCancel} style={{ marginLeft: 'auto' }} hitSlop={8}>
               <MaterialCommunityIcons name="close-circle-outline" size={18} color="#EF4444" />
             </Pressable>
@@ -161,6 +179,12 @@ const ticketStyles = StyleSheet.create({
   qrBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 'auto', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: 'rgba(212,168,83,0.1)' },
   statusStrip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 8, backgroundColor: 'rgba(34,197,94,0.06)', borderTopWidth: 1, borderTopColor: 'rgba(34,197,94,0.1)' },
   statusDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: '#22C55E' },
+  expiredOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'transparent',
+    // Subtle crosshatch pattern via diagonal lines (simulated with border)
+    opacity: 0.03,
+  },
 });
 
 // ─── Book Ride Prompt ───────────────────────────────────────────
