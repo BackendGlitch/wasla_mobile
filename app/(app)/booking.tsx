@@ -166,7 +166,7 @@ export default function BookingScreen() {
           routeName,
           departureName,
           destinationName,
-          availableSeats,
+          availableSeats: availableSeatsLive,
           seatCount: ticket.seats_booked ?? seatCount,
           pricePerSeat,
           totalPrice,
