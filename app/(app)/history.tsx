@@ -1,186 +1,139 @@
+import { useMemo } from 'react';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import dayjs from 'dayjs';
 import { useRouter } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text, XStack, YStack } from 'tamagui';
-import { formatCurrency, formatIssuedAt } from '../../src/lib/bookingFlow';
 import { useBookingStore } from '../../src/store';
-import { appColors } from '../../src/theme/appTheme';
 
 export default function HistoryScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const tickets = useBookingStore((state) => state.tickets);
-  const contentPadTop = Math.max(insets.top + 16, 56);
+  const tickets = useBookingStore((s) => s.tickets);
+  const topPad = Math.max(insets.top + 12, 48);
 
-  const navigateBack = () => {
-    if (router.canGoBack()) router.back();
-    else router.replace('/(app)');
-  };
+  // Stats
+  const stats = useMemo(() => {
+    const total = tickets.reduce((sum, t) => sum + (t.totalPrice || 0), 0);
+    return { trips: tickets.length, spent: total };
+  }, [tickets]);
+
+  // Group by date
+  const grouped = useMemo(() => {
+    const map: Record<string, typeof tickets> = {};
+    for (const t of tickets) {
+      const day = dayjs(t.issuedAt).format('ddd, D MMM');
+      if (!map[day]) map[day] = [];
+      map[day].push(t);
+    }
+    return Object.entries(map);
+  }, [tickets]);
 
   return (
-    <YStack flex={1} bg={appColors.bg}>
-      <ScrollView contentContainerStyle={[styles.content, { paddingTop: contentPadTop }]}>
-        <View style={styles.screenGlow} pointerEvents="none" />
-        <Pressable onPress={navigateBack} style={styles.backButton}>
-          <XStack items="center" gap="$2">
-            <MaterialCommunityIcons name="arrow-left" size={20} color={appColors.textPrimary} />
-            <Text color={appColors.textPrimary} fontSize="$4" fontWeight="700">
-              Back
-            </Text>
-          </XStack>
-        </Pressable>
+    <YStack flex={1} bg="#060B14">
+      <ScrollView
+        contentContainerStyle={{ paddingTop: topPad, paddingBottom: Math.max(insets.bottom, 20) + 120, paddingHorizontal: 16 }}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Header */}
+        <XStack items="center" justify="space-between" mb={16}>
+          <Text color="#F0F4FF" fontSize={22} fontWeight="700" letterSpacing={-0.4}>Trips</Text>
+          <Pressable onPress={() => router.back()} style={{ padding: 4 }}>
+            <MaterialCommunityIcons name="close" size={20} color="#556580" />
+          </Pressable>
+        </XStack>
 
-        <YStack gap="$5">
-          <YStack gap="$2">
-            <Text color={appColors.textMuted} fontSize="$2" letterSpacing={0.7}>
-              BOOKING HISTORY
-            </Text>
-            <Text color={appColors.textPrimary} fontSize="$10" fontWeight="800">
-              Your recent tickets
-            </Text>
-            <Text color={appColors.textSecondary} fontSize="$4">
-              Paid tickets from this session stay here so you can reopen the QR and trip details.
-            </Text>
-          </YStack>
-
-          {tickets.length === 0 ? (
-            <View style={styles.emptyState}>
-              <MaterialCommunityIcons name="ticket-outline" size={34} color={appColors.textMuted} />
-              <Text mt="$3" color={appColors.textPrimary} fontSize="$5" fontWeight="700">
-                No bookings yet
-              </Text>
-              <Text mt="$2" color={appColors.textSecondary} fontSize="$4" style={styles.centerText}>
-                Finish a booking and the confirmed ticket will show up here.
-              </Text>
-              <Pressable onPress={() => router.replace('/(app)')} style={styles.primaryButton}>
-                <Text color={appColors.bg} fontSize="$4" fontWeight="800">
-                  Start booking
-                </Text>
-              </Pressable>
+        {/* Stats bar */}
+        {tickets.length > 0 && (
+          <XStack gap={8} mb={20}>
+            <View style={hs.stat}>
+              <Text color="#F0F4FF" fontSize={20} fontWeight="700">{stats.trips}</Text>
+              <Text color="#556580" fontSize={10} fontWeight="600">TRIPS</Text>
             </View>
-          ) : (
-            <YStack gap="$3">
-              {tickets.map((ticket) => (
+            <View style={hs.stat}>
+              <Text color="#D4A853" fontSize={20} fontWeight="700">{stats.spent}</Text>
+              <Text color="#556580" fontSize={10} fontWeight="600">TND SPENT</Text>
+            </View>
+          </XStack>
+        )}
+
+        {/* Ticket list */}
+        {tickets.length === 0 ? (
+          <YStack items="center" py={60} gap={12}>
+            <View style={hs.emptyIcon}>
+              <MaterialCommunityIcons name="ticket-outline" size={28} color="#3A4A60" />
+            </View>
+            <Text color="#F0F4FF" fontSize={16} fontWeight="700">No trips yet</Text>
+            <Text color="#556580" fontSize={12} text="center">Your completed bookings will appear here</Text>
+            <Pressable onPress={() => router.replace('/(app)')} style={hs.cta}>
+              <Text color="#0A0F19" fontSize={13} fontWeight="700">Book a trip</Text>
+            </Pressable>
+          </YStack>
+        ) : (
+          grouped.map(([date, items]) => (
+            <YStack key={date} mb={16}>
+              <Text color="#556580" fontSize={10} fontWeight="600" letterSpacing={1} mb={8}>{date.toUpperCase()}</Text>
+              {items.map((t) => (
                 <Pressable
-                  key={ticket.id}
-                  onPress={() => router.push({ pathname: '/(app)/ticket', params: { ticketId: ticket.id } })}
-                  style={({ pressed }) => [styles.ticketCard, pressed ? styles.buttonPressed : null]}
+                  key={t.id}
+                  onPress={() => router.push({ pathname: '/(app)/ticket', params: { ticketId: t.id } })}
+                  style={({ pressed }) => [hs.card, pressed && { opacity: 0.7 }]}
                 >
-                  <XStack items="center" justify="space-between" gap="$3">
-                    <YStack flex={1} gap="$1">
-                      <Text color={appColors.textPrimary} fontSize="$5" fontWeight="700">
-                        {ticket.departureName} to {ticket.destinationName}
-                      </Text>
-                      <Text color={appColors.textSecondary} fontSize="$3">
-                        {ticket.stationName} | ETD {ticket.etdLabel}
-                      </Text>
-                    </YStack>
-                    <MaterialCommunityIcons name="chevron-right" size={22} color={appColors.textMuted} />
-                  </XStack>
-
-                  <XStack mt="$4" gap="$2" flexWrap="wrap">
-                    <View style={[styles.badge, styles.badgeAccent]}>
-                      <Text color={appColors.textPrimary} fontSize="$3" fontWeight="700">
-                        {ticket.seatCount} seat{ticket.seatCount > 1 ? 's' : ''}
-                      </Text>
-                    </View>
-                    <View style={styles.badge}>
-                      <Text color={appColors.textSecondary} fontSize="$3" fontWeight="700">
-                        {formatCurrency(ticket.totalPrice)}
-                      </Text>
-                    </View>
-                    <View style={styles.badge}>
-                      <Text color={appColors.textSecondary} fontSize="$3" fontWeight="700">
-                        {ticket.vehiclePlate}
-                      </Text>
-                    </View>
-                  </XStack>
-
-                  <Text mt="$3" color={appColors.textMuted} fontSize="$2">
-                    Issued {formatIssuedAt(ticket.issuedAt)}
-                  </Text>
+                  <View style={hs.cardLeft}>
+                    <View style={hs.routeDot} />
+                    <View style={hs.routeLine} />
+                  </View>
+                  <YStack flex={1} gap={4}>
+                    <XStack items="center" justify="space-between">
+                      <Text color="#F0F4FF" fontSize={14} fontWeight="600">{t.stationName} → {t.destinationName}</Text>
+                      <Text color="#D4A853" fontSize={12} fontWeight="700">{t.totalPrice} TND</Text>
+                    </XStack>
+                    <XStack gap={12}>
+                      <XStack gap={4} items="center">
+                        <MaterialCommunityIcons name="clock-outline" size={10} color="#556580" />
+                        <Text color="#556580" fontSize={11}>{t.etdLabel}</Text>
+                      </XStack>
+                      <XStack gap={4} items="center">
+                        <MaterialCommunityIcons name="card-bulleted" size={10} color="#556580" />
+                        <Text color="#556580" fontSize={11}>{t.vehiclePlate}</Text>
+                      </XStack>
+                      <XStack gap={4} items="center">
+                        <MaterialCommunityIcons name="account" size={10} color="#556580" />
+                        <Text color="#556580" fontSize={11}>{t.seatCount}</Text>
+                      </XStack>
+                    </XStack>
+                  </YStack>
+                  <MaterialCommunityIcons name="chevron-right" size={16} color="#3A4A60" />
                 </Pressable>
               ))}
             </YStack>
-          )}
-        </YStack>
+          ))
+        )}
       </ScrollView>
     </YStack>
   );
 }
 
-const styles = StyleSheet.create({
-  content: {
-    paddingHorizontal: 20,
-    paddingBottom: 140,
-    overflow: 'hidden',
+const hs = StyleSheet.create({
+  stat: {
+    flex: 1, padding: 12, borderRadius: 12,
+    backgroundColor: '#0D1525', borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)',
   },
-  screenGlow: {
-    position: 'absolute',
-    top: -70,
-    left: -28,
-    width: 220,
-    height: 220,
-    borderRadius: 999,
-    backgroundColor: appColors.accentGlowSoft,
-    opacity: 0.3,
+  emptyIcon: {
+    width: 56, height: 56, borderRadius: 16,
+    backgroundColor: '#0D1525', alignItems: 'center', justifyContent: 'center',
   },
-  backButton: {
-    alignSelf: 'flex-start',
-    marginBottom: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: appColors.borderStrong,
-    backgroundColor: appColors.surfaceStrong,
+  cta: {
+    marginTop: 8, backgroundColor: '#D4A853',
+    paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12,
   },
-  emptyState: {
-    minHeight: 340,
-    borderRadius: 18,
-    borderWidth: 1.5,
-    borderColor: appColors.borderStrong,
-    backgroundColor: appColors.surface,
-    padding: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
+  card: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingVertical: 14, paddingRight: 14, paddingLeft: 0,
+    borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.04)',
   },
-  ticketCard: {
-    borderRadius: 16,
-    borderWidth: 1.5,
-    borderColor: appColors.borderStrong,
-    backgroundColor: appColors.surface,
-    padding: 18,
-  },
-  badge: {
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: appColors.borderStrong,
-    backgroundColor: appColors.surface,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  badgeAccent: {
-    borderColor: appColors.accentGlow,
-    backgroundColor: appColors.accentSoft,
-  },
-  primaryButton: {
-    marginTop: 20,
-    borderRadius: 12,
-    backgroundColor: appColors.accent,
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: appColors.borderStrong,
-  },
-  buttonPressed: {
-    opacity: 0.92,
-    transform: [{ scale: 0.99 }],
-  },
-  centerText: {
-    textAlign: 'center',
-  },
+  cardLeft: { alignItems: 'center', width: 32 },
+  routeDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#D4A853' },
+  routeLine: { width: 2, height: 28, backgroundColor: '#1E2D45', marginTop: -2 },
 });
