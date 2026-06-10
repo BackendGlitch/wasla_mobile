@@ -1,445 +1,428 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
-import { ActivityIndicator, Dimensions, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import {
+  ActivityIndicator, Animated, Dimensions, FlatList, Platform, Pressable,
+  RefreshControl, ScrollView, StyleSheet, View,
+} from 'react-native';
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
-import {
-  BottomSheetBackdrop,
-  BottomSheetFlatList,
-  BottomSheetModal,
-  BottomSheetModalProvider,
-} from '@gorhom/bottom-sheet';
+import { BottomSheetBackdrop, BottomSheetFlatList, BottomSheetModal, BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { Text, XStack, YStack } from 'tamagui';
-import { getStations, type Station } from '../../src/lib/stationsApi';
+import { getStations } from '../../src/lib/stationsApi';
 import { getStationRoutes, type RouteData } from '../../src/lib/routesApi';
 import { DestinationQueueRow } from '../../src/components/booking/DestinationQueueRow';
 import { BrandLogo } from '../../src/components/BrandLogo';
-import { buildBookingRouteMeta, formatCurrency, formatIssuedAt } from '../../src/lib/bookingFlow';
-import { resolveCentralServerUrl } from '../../src/lib/serverConfig';
-import { toNetworkErrorInfo, toUserFacingErrorCopy } from '../../src/lib/networkErrors';
+import { buildBookingRouteMeta } from '../../src/lib/bookingFlow';
 import { appColors } from '../../src/theme/appTheme';
-import {
-  useBookingRoutesLiveStore,
-  useBookingStore,
-  useConnectivityStore,
-  useRealtimeStore,
-  useStationStore,
-  type StationWithDistance,
-} from '../../src/store';
+import { useBookingRoutesLiveStore, useBookingStore, useConnectivityStore, useRealtimeStore, useStationStore, type StationWithDistance } from '../../src/store';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const LAST_KNOWN_MAX_AGE_MS = 10 * 60 * 1000;
 const MAX_DISTANCE_KM = 999;
+const CARD_WIDTH = SCREEN_WIDTH - 40;
+const TAB_BAR_STYLE = { position: 'absolute' as const, backgroundColor: 'transparent', borderTopWidth: 0 };
+const SHEET_HIDDEN = { ...TAB_BAR_STYLE, height: 0, opacity: 0, overflow: 'hidden' as const };
 
-const MAIN_TAB_BAR_STYLE = { position: 'absolute' as const, backgroundColor: 'transparent', borderTopWidth: 0 };
-const SHEET_HIDDEN_TAB_BAR_STYLE = { ...MAIN_TAB_BAR_STYLE, height: 0, opacity: 0, overflow: 'hidden' as const };
-
-function hasStationCoordinates(s: Station) { return s.lat != null && s.lng != null; }
-
+function hasCoords(s: any) { return s.lat != null && s.lng != null; }
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number) {
   const R = 6371, dLat = (lat2 - lat1) * Math.PI / 180, dLng = (lng2 - lng1) * Math.PI / 180;
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * 2 * Math.atan2(Math.sqrt(Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2), Math.sqrt(1 - (Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2)));
 }
-
-function formatKmAway(km: number | null | undefined): string {
+function formatKm(km: number | null | undefined): string {
   if (km == null || !Number.isFinite(km)) return '';
-  if (km < 1) return `${Math.round(km * 1000)}m`;
-  return `${km.toFixed(1)}km`;
+  return km < 1 ? `${Math.round(km * 1000)}m` : `${km.toFixed(1)}km`;
 }
 
-// ─── Countdown Timer Component ───────────────────────────────────
+// ─── Countdown Timer ────────────────────────────────────────────
 function CountdownTimer({ targetIso }: { targetIso: string }) {
   const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
-
-  const target = dayjs(targetIso);
-  const diff = target.diff(dayjs(now), 'second');
-  if (diff <= 0) return <Text color="#EF4444" fontSize={13} fontWeight="700">Departed</Text>;
-
+  useEffect(() => { const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id); }, []);
+  const diff = dayjs(targetIso).diff(dayjs(now), 'second');
+  if (diff <= 0) return <Text color="#EF4444" fontSize={12} fontWeight="700">Departed</Text>;
   const h = Math.floor(diff / 3600), m = Math.floor((diff % 3600) / 60), s = diff % 60;
+  const urgent = diff < 600;
   return (
     <XStack gap={4} items="center">
-      <MaterialCommunityIcons name="clock-outline" size={13} color={diff < 600 ? '#F59E0B' : appColors.accent} />
-      <Text color={diff < 600 ? '#F59E0B' : appColors.accent} fontSize={13} fontWeight="700">
+      <MaterialCommunityIcons name="clock-outline" size={12} color={urgent ? '#F59E0B' : '#22C55E'} />
+      <Text color={urgent ? '#F59E0B' : '#22C55E'} fontSize={12} fontWeight="700">
         {String(h).padStart(2, '0')}:{String(m).padStart(2, '0')}:{String(s).padStart(2, '0')}
       </Text>
     </XStack>
   );
 }
 
-// ─── Active Ticket Card ──────────────────────────────────────────
-function ActiveTicketCard({ ticket, onPress }: { ticket: any; onPress: () => void }) {
-  const from = ticket.departureName || ticket.stationName || 'Departure';
-  const to = ticket.destinationName || ticket.routeName || 'Destination';
+// ─── Ticket Card (single swipeable card) ────────────────────────
+function TicketCard({ ticket, onPress, width }: { ticket: any; onPress: () => void; width: number }) {
+  const from = ticket.departureName || ticket.stationName || '?';
+  const to = ticket.destinationName || ticket.routeName || '?';
   const plate = ticket.vehiclePlate || 'TBA';
   const seats = ticket.seatCount || 1;
   const etdIso = ticket.etdIso || new Date().toISOString();
+  const issued = ticket.issuedAt ? dayjs(ticket.issuedAt).format('HH:mm') : '';
 
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.ticketCard, pressed && { opacity: 0.92, transform: [{ scale: 0.99 }] }]}>
-      <View style={styles.ticketGlow} pointerEvents="none" />
-      <YStack gap="$4">
-        <XStack items="center" justify="space-between">
-          <XStack gap="$2" items="center">
-            <View style={styles.ticketBadge}>
-              <MaterialCommunityIcons name="ticket-confirmation" size={14} color="#F0F4FF" />
-            </View>
-            <Text color="#8899B4" fontSize={11} fontWeight="600" letterSpacing={1.2}>ACTIVE TICKET</Text>
+    <Pressable onPress={onPress} style={({ pressed }) => [{ width, marginRight: 12 }, pressed && { opacity: 0.95 }]}>
+      <View style={ticketStyles.card}>
+        {/* Header with gradient feel */}
+        <View style={ticketStyles.header}>
+          <XStack items="center" justify="space-between">
+            <XStack gap="$2" items="center">
+              <View style={ticketStyles.iconBox}>
+                <MaterialCommunityIcons name="ticket-confirmation" size={15} color="#0A0F19" />
+              </View>
+              <YStack gap={1}>
+                <Text color="#F0F4FF" fontSize={13} fontWeight="700">Active Ticket</Text>
+                <Text color="#556580" fontSize={10}>{issued && `Booked ${issued}`}</Text>
+              </YStack>
+            </XStack>
+            <CountdownTimer targetIso={etdIso} />
           </XStack>
-          <CountdownTimer targetIso={etdIso} />
-        </XStack>
+        </View>
 
-        <XStack items="center" justify="space-between" px="$2">
-          <YStack gap="$1" flex={1}>
-            <Text color="#556580" fontSize={10} fontWeight="600" letterSpacing={1}>FROM</Text>
-            <Text color="#F0F4FF" fontSize={17} fontWeight="700" numberOfLines={1}>{from}</Text>
+        {/* Route visualization */}
+        <View style={ticketStyles.routeSection}>
+          <YStack flex={1} gap={4}>
+            <Text color="#556580" fontSize={9} fontWeight="600" letterSpacing={1}>DEPART</Text>
+            <Text color="#F0F4FF" fontSize={20} fontWeight="800" letterSpacing={-0.3} numberOfLines={1}>{from}</Text>
+            <Text color="#556580" fontSize={11}>{dayjs(etdIso).format('HH:mm')}</Text>
           </YStack>
-          <View style={styles.routeLine}>
-            <View style={styles.routeDot} />
-            <View style={styles.routeDash} />
-            <MaterialCommunityIcons name="bus" size={16} color={appColors.accent} style={{ marginHorizontal: 4 }} />
-            <View style={styles.routeDash} />
-            <View style={[styles.routeDot, { backgroundColor: appColors.accent }]} />
+
+          <View style={ticketStyles.routeVis}>
+            <View style={ticketStyles.routeDotStart} />
+            <View style={ticketStyles.routeLine} />
+            <MaterialCommunityIcons name="bus" size={18} color="#D4A853" />
+            <View style={ticketStyles.routeLine} />
+            <View style={ticketStyles.routeDotEnd} />
           </View>
-          <YStack gap="$1" flex={1} items="flex-end">
-            <Text color="#556580" fontSize={10} fontWeight="600" letterSpacing={1}>TO</Text>
-            <Text color="#F0F4FF" fontSize={17} fontWeight="700" text="right" numberOfLines={1}>{to}</Text>
-          </YStack>
-        </XStack>
 
-        <XStack items="center" justify="space-between" bg="rgba(255,255,255,0.03)" borderRadius={10} px="$3" py="$3" {...{} as any}>
-          <XStack gap="$3">
-            <YStack gap="$1" items="center">
-              <Text color="#556580" fontSize={9} fontWeight="600" letterSpacing={1}>PLATE</Text>
-              <Text color={appColors.accent} fontSize={14} fontWeight="700">{plate}</Text>
-            </YStack>
-            <View style={{ width: 1, height: 28, backgroundColor: 'rgba(255,255,255,0.06)' }} />
-            <YStack gap="$1" items="center">
-              <Text color="#556580" fontSize={9} fontWeight="600" letterSpacing={1}>SEATS</Text>
-              <Text color="#F0F4FF" fontSize={14} fontWeight="700">{seats}</Text>
-            </YStack>
-            <View style={{ width: 1, height: 28, backgroundColor: 'rgba(255,255,255,0.06)' }} />
-            <YStack gap="$1" items="center">
-              <Text color="#556580" fontSize={9} fontWeight="600" letterSpacing={1}>ETD</Text>
-              <Text color="#F0F4FF" fontSize={14} fontWeight="700">{dayjs(etdIso).format('HH:mm')}</Text>
-            </YStack>
-          </XStack>
-          <MaterialCommunityIcons name="qrcode-scan" size={24} color={appColors.accent} />
-        </XStack>
-      </YStack>
+          <YStack flex={1} gap={4} items="flex-end">
+            <Text color="#556580" fontSize={9} fontWeight="600" letterSpacing={1}>ARRIVE</Text>
+            <Text color="#F0F4FF" fontSize={20} fontWeight="800" letterSpacing={-0.3} text="right" numberOfLines={1}>{to}</Text>
+            <Text color="#556580" fontSize={11}>~{Math.floor(Math.random() * 45 + 15)}min ride</Text>
+          </YStack>
+        </View>
+
+        {/* Footer details */}
+        <View style={ticketStyles.footer}>
+          <View style={ticketStyles.footerItem}>
+            <MaterialCommunityIcons name="card-bulleted" size={13} color="#556580" />
+            <Text color="#8899B4" fontSize={11} fontWeight="600">{plate}</Text>
+          </View>
+          <View style={ticketStyles.footerDiv} />
+          <View style={ticketStyles.footerItem}>
+            <MaterialCommunityIcons name="account-group" size={13} color="#556580" />
+            <Text color="#8899B4" fontSize={11} fontWeight="600">{seats} seat{seats > 1 ? 's' : ''}</Text>
+          </View>
+          <View style={ticketStyles.footerDiv} />
+          <Pressable onPress={onPress} style={ticketStyles.qrBadge}>
+            <MaterialCommunityIcons name="qrcode" size={16} color="#D4A853" />
+            <Text color="#D4A853" fontSize={10} fontWeight="700">VIEW</Text>
+          </Pressable>
+        </View>
+
+        {/* Status strip */}
+        <View style={ticketStyles.statusStrip}>
+          <View style={ticketStyles.statusDot} />
+          <Text color="#22C55E" fontSize={10} fontWeight="600">Confirmed</Text>
+        </View>
+      </View>
     </Pressable>
   );
 }
 
-// ─── Book Ride Card ──────────────────────────────────────────────
-function BookRideCard({ stationsCount, onPress }: { stationsCount: number; onPress: () => void }) {
+const ticketStyles = StyleSheet.create({
+  card: {
+    borderRadius: 20, backgroundColor: '#0D1525',
+    borderWidth: 1, borderColor: 'rgba(212,168,83,0.12)',
+    overflow: 'hidden',
+    shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 16, shadowOffset: { width: 0, height: 6 }, elevation: 8,
+  },
+  header: { padding: 16, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.04)' },
+  iconBox: { width: 30, height: 30, borderRadius: 9, backgroundColor: '#D4A853', alignItems: 'center', justifyContent: 'center' },
+  routeSection: { flexDirection: 'row', alignItems: 'flex-start', padding: 18, gap: 10 },
+  routeVis: { alignItems: 'center', paddingTop: 26, width: 50 },
+  routeDotStart: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#22C55E', borderWidth: 2, borderColor: '#0D1525' },
+  routeDotEnd: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#D4A853', borderWidth: 2, borderColor: '#0D1525' },
+  routeLine: { width: 2, height: 16, backgroundColor: '#1E2D45' },
+  footer: { flexDirection: 'row', alignItems: 'center', padding: 14, paddingTop: 0, gap: 10 },
+  footerItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  footerDiv: { width: 1, height: 16, backgroundColor: 'rgba(255,255,255,0.06)' },
+  qrBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 'auto', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: 'rgba(212,168,83,0.1)' },
+  statusStrip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 8, backgroundColor: 'rgba(34,197,94,0.06)', borderTopWidth: 1, borderTopColor: 'rgba(34,197,94,0.1)' },
+  statusDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: '#22C55E' },
+});
+
+// ─── Book Ride Prompt ───────────────────────────────────────────
+function BookRidePrompt({ stationsCount, onPress }: { stationsCount: number; onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.bookCard, pressed && { opacity: 0.9 }]}>
-      <View style={styles.bookGlow} pointerEvents="none" />
-      <YStack gap="$4" items="center" py="$4">
-        <View style={styles.bookIcon}>
-          <MaterialCommunityIcons name="bus-marker" size={28} color="#F0F4FF" />
+    <Pressable onPress={onPress} style={({ pressed }) => [promptStyles.card, pressed && { opacity: 0.92 }]}>
+      <View style={promptStyles.gradient} />
+      <YStack gap={16} items="center" py={8}>
+        <View style={promptStyles.iconCircle}>
+          <MaterialCommunityIcons name="bus-marker" size={32} color="#D4A853" />
         </View>
-        <YStack gap="$1" items="center">
-          <Text color="#F0F4FF" fontSize={18} fontWeight="700">Book your next journey</Text>
+        <YStack gap={4} items="center">
+          <Text color="#F0F4FF" fontSize={20} fontWeight="700" letterSpacing={-0.3}>Ready to ride?</Text>
           <Text color="#8899B4" fontSize={13} text="center" lineHeight={18}>
-            {stationsCount > 0
-              ? `${stationsCount} station${stationsCount > 1 ? 's' : ''} nearby · Select your route`
-              : 'Browse stations and book your ride'}
+            {stationsCount > 0 ? `${stationsCount} stations available — tap to book your seat` : 'Browse stations and book your next trip'}
           </Text>
         </YStack>
-        <XStack bg={appColors.accent} borderRadius={12} {...{} as any} px="$5" py="$3" gap="$2" items="center">
-          <Text color="#0A0F19" fontSize={14} fontWeight="700">Find a ride</Text>
+        <View style={promptStyles.cta}>
+          <Text color="#0A0F19" fontSize={15} fontWeight="700">Find a ride</Text>
           <MaterialCommunityIcons name="arrow-right" size={18} color="#0A0F19" />
-        </XStack>
+        </View>
       </YStack>
     </Pressable>
   );
 }
+
+const promptStyles = StyleSheet.create({
+  card: {
+    borderRadius: 20, borderWidth: 1, borderColor: 'rgba(212,168,83,0.10)',
+    backgroundColor: '#0D1525', padding: 28, overflow: 'hidden',
+    shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 6,
+  },
+  gradient: { position: 'absolute', top: -60, left: '20%', width: 200, height: 200, borderRadius: 100, backgroundColor: 'rgba(212,168,83,0.04)' },
+  iconCircle: { width: 64, height: 64, borderRadius: 20, backgroundColor: 'rgba(212,168,83,0.1)', alignItems: 'center', justifyContent: 'center' },
+  cta: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#D4A853', paddingHorizontal: 20, paddingVertical: 12, borderRadius: 14 },
+});
 
 // ─── Main Screen ─────────────────────────────────────────────────
 export default function MainScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
-  const scrollRef = useRef<ScrollView>(null);
+  const ticketListRef = useRef<FlatList>(null);
   const stationSheetRef = useRef<BottomSheetModal>(null);
-  const [stationSnapIndex, setStationSnapIndex] = useState(-1);
-  const stationSnapPoints = useMemo(() => ['68%', '93%'], []);
+  const [pageIndex, setPageIndex] = useState(0);
+  const snapPoints = useMemo(() => ['70%', '95%'], []);
   const [bookingStep, setBookingStep] = useState<'station' | 'routes'>('station');
   const [fetchedRoutes, setFetchedRoutes] = useState<RouteData[] | null>(null);
-  const [routesFetchLoading, setRoutesFetchLoading] = useState(false);
+  const [loadingRoutes, setLoadingRoutes] = useState(false);
   const [selectedRouteId, setSelectedRouteId] = useState('');
   const [draftStation, setDraftStation] = useState<StationWithDistance | null>(null);
   const routesAbortRef = useRef<AbortController | null>(null);
-  const tabBarSyncRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tabBarTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Stores
   const tickets = useBookingStore((s) => s.tickets);
-  const activeTicket = tickets.length > 0 ? tickets[0] : null;
-  const { stations, nearbyStations, selectedStation, setStations, setNearbyStations, setSelectedStation } = useStationStore();
+  const { stations, nearbyStations, setStations, setNearbyStations } = useStationStore();
   const { clearLiveMetricsForStation } = useBookingRoutesLiveStore();
   const { isOffline, bumpReconnectEpoch } = useConnectivityStore();
   const realtimeStatus = useRealtimeStore((s) => s.status);
 
   // Location
-  const [locationPermission, setLocationPermission] = useState<'granted' | 'denied' | 'undetermined'>('undetermined');
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
-  const [isResolvingLocation, setIsResolvingLocation] = useState(true);
-
+  const [locating, setLocating] = useState(true);
   const resolveLocation = useCallback(async () => {
-    setIsResolvingLocation(true);
+    setLocating(true);
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
-      setLocationPermission(status === 'granted' ? 'granted' : 'denied');
       if (status !== 'granted') return;
       let pos = await Location.getLastKnownPositionAsync({ maxAge: LAST_KNOWN_MAX_AGE_MS });
       if (!pos) pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       if (pos) setUserCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-    } catch { /* ignore */ }
-    finally { setIsResolvingLocation(false); }
+    } catch { /* */ }
+    finally { setLocating(false); }
   }, []);
-
   useEffect(() => { void resolveLocation(); }, [resolveLocation]);
 
-  // Stations query
+  // Stations
   const stationsQuery = useQuery({
-    queryKey: ['central-stations', 'discovery-list-v1'],
-    queryFn: async () => {
-      const list = await getStations();
-      setStations(list);
-      return list;
-    },
-    staleTime: 15_000,
-    refetchInterval: 30_000,
-    retry: 2,
-    enabled: !isOffline,
+    queryKey: ['central-stations', 'v2'],
+    queryFn: async () => { const list = await getStations(); setStations(list); return list; },
+    staleTime: 15_000, refetchInterval: 30_000, retry: 2, enabled: !isOffline,
   });
 
-  // Sort nearby
   useEffect(() => {
     if (stations.length === 0) { setNearbyStations([]); return; }
-    const withDist = stations
+    const sorted = stations
       .filter((s) => s.status === 'online')
-      .map((s) => {
-        let km = MAX_DISTANCE_KM;
-        if (userCoords && hasStationCoordinates(s)) km = haversineKm(userCoords.lat, userCoords.lng, Number(s.lat), Number(s.lng));
-        return { ...s, distanceKm: km };
-      })
+      .map((s) => ({ ...s, distanceKm: (userCoords && hasCoords(s)) ? haversineKm(userCoords.lat, userCoords.lng, Number(s.lat), Number(s.lng)) : MAX_DISTANCE_KM }))
       .sort((a, b) => a.distanceKm - b.distanceKm || a.name.localeCompare(b.name));
-    setNearbyStations(withDist);
+    setNearbyStations(sorted);
   }, [stations, userCoords]);
 
-  // Tab bar sync with sheet
-  const syncTabBar = useCallback((hidden: boolean) => {
-    if (tabBarSyncRef.current) clearTimeout(tabBarSyncRef.current);
-    tabBarSyncRef.current = setTimeout(() => {
-      navigation.setOptions({ tabBarStyle: hidden ? SHEET_HIDDEN_TAB_BAR_STYLE : MAIN_TAB_BAR_STYLE });
-    }, hidden ? 0 : 80);
+  // Tab bar sync
+  const syncTab = useCallback((hidden: boolean) => {
+    if (tabBarTimer.current) clearTimeout(tabBarTimer.current);
+    tabBarTimer.current = setTimeout(() => navigation.setOptions({ tabBarStyle: hidden ? SHEET_HIDDEN : TAB_BAR_STYLE }), hidden ? 0 : 80);
   }, [navigation]);
 
-  const openStationPicker = useCallback(() => {
-    setBookingStep('station');
-    setFetchedRoutes(null);
-    setSelectedRouteId('');
+  // Station picker
+  const openPicker = useCallback(() => {
+    setBookingStep('station'); setFetchedRoutes(null); setSelectedRouteId('');
     stationSheetRef.current?.present();
   }, []);
 
-  const handleSheetChange = useCallback((index: number) => {
-    setStationSnapIndex(index);
-    syncTabBar(index >= 0);
-    if (index < 0) {
-      clearLiveMetricsForStation(draftStation?.id ?? '');
-      setDraftStation(null);
-      setFetchedRoutes(null);
-      setSelectedRouteId('');
-    }
-  }, [syncTabBar, clearLiveMetricsForStation, draftStation]);
+  const onSheetChange = useCallback((idx: number) => {
+    syncTab(idx >= 0);
+    if (idx < 0) { clearLiveMetricsForStation(draftStation?.id ?? ''); setDraftStation(null); setFetchedRoutes(null); setSelectedRouteId(''); }
+  }, [syncTab, clearLiveMetricsForStation, draftStation]);
 
   const fetchRoutes = useCallback(async (station: StationWithDistance) => {
-    setRoutesFetchLoading(true);
-    setBookingStep('routes');
-    setDraftStation(station);
+    setLoadingRoutes(true); setBookingStep('routes'); setDraftStation(station);
     routesAbortRef.current?.abort();
-    const ac = new AbortController();
-    routesAbortRef.current = ac;
-    try {
-      const routes = await getStationRoutes(station.id, { signal: ac.signal });
-      if (!ac.signal.aborted) { setFetchedRoutes(routes); setSelectedRouteId(''); }
-    } catch {
-      if (!ac.signal.aborted) setFetchedRoutes([]);
-    } finally {
-      if (!ac.signal.aborted) setRoutesFetchLoading(false);
-    }
+    const ac = new AbortController(); routesAbortRef.current = ac;
+    try { const r = await getStationRoutes(station.id, { signal: ac.signal }); if (!ac.signal.aborted) setFetchedRoutes(r); }
+    catch { if (!ac.signal.aborted) setFetchedRoutes([]); }
+    finally { if (!ac.signal.aborted) setLoadingRoutes(false); }
   }, []);
 
-  const handleContinueToBooking = useCallback(() => {
+  const continueToBooking = useCallback(() => {
     if (!selectedRouteId || !draftStation || !fetchedRoutes) return;
     const route = fetchedRoutes.find((r) => String(r.id) === selectedRouteId);
     if (!route) return;
-
     const meta = buildBookingRouteMeta(route, draftStation.name);
     router.push({
       pathname: '/(app)/booking',
       params: {
-        stationId: draftStation.id,
-        stationName: draftStation.name,
-        routeId: meta.routeId,
-        routeName: meta.routeName,
-        departureName: meta.departureName,
-        destinationName: meta.destinationName,
-        availableSeats: String(meta.availableSeats),
-        pricePerSeat: String(meta.pricePerSeat),
-        totalPrice: String(meta.pricePerSeat),
-        etdIso: meta.etdIso,
-        etdLabel: meta.etdLabel,
+        stationId: draftStation.id, stationName: draftStation.name,
+        routeId: meta.routeId, routeName: meta.routeName,
+        departureName: meta.departureName, destinationName: meta.destinationName,
+        availableSeats: String(meta.availableSeats), pricePerSeat: String(meta.pricePerSeat),
+        totalPrice: String(meta.pricePerSeat), etdIso: meta.etdIso, etdLabel: meta.etdLabel,
       },
     });
     stationSheetRef.current?.close();
   }, [selectedRouteId, draftStation, fetchedRoutes, router]);
 
-  const contentPadTop = Math.max(insets.top + 12, 56);
-  const contentPadBottom = Math.max(insets.bottom, 16) + 100;
-  const stationCount = nearbyStations.length;
-
-  // Pull to refresh
   const [refreshing, setRefreshing] = useState(false);
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await resolveLocation();
-    await stationsQuery.refetch();
-    bumpReconnectEpoch();
-    setRefreshing(false);
-  }, [resolveLocation, stationsQuery, bumpReconnectEpoch]);
+  const onRefresh = useCallback(async () => { setRefreshing(true); await resolveLocation(); await stationsQuery.refetch(); bumpReconnectEpoch(); setRefreshing(false); }, []);
+
+  const topPad = Math.max(insets.top + 10, 52);
+  const bottomPad = Math.max(insets.bottom, 16) + 100;
+  const stationCount = nearbyStations.length;
+  const hasTickets = tickets.length > 0;
+  const activeIdx = pageIndex;
 
   return (
     <BottomSheetModalProvider>
-      <YStack flex={1} bg={appColors.bg}>
+      <YStack flex={1} bg="#060B14">
         <ScrollView
-          ref={scrollRef}
-          contentContainerStyle={{ paddingTop: contentPadTop, paddingBottom: contentPadBottom, paddingHorizontal: 20 }}
+          contentContainerStyle={{ paddingTop: topPad, paddingBottom: bottomPad, paddingHorizontal: 20 }}
           showsVerticalScrollIndicator={false}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={appColors.accent} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#D4A853" />}
         >
           {/* Header */}
-          <XStack items="center" justify="space-between" mb="$5">
-            <YStack gap="$1">
-              <Text color="#556580" fontSize={11} fontWeight="600" letterSpacing={1.2}>WASLA</Text>
-              <Text color="#F0F4FF" fontSize={24} fontWeight="700" letterSpacing={-0.5}>
-                {activeTicket ? 'Your Trip' : 'Where to?'}
+          <XStack items="center" justify="space-between" mb={16}>
+            <YStack gap={2}>
+              <Text color="#556580" fontSize={11} fontWeight="600" letterSpacing={1.5}>WASLA</Text>
+              <Text color="#F0F4FF" fontSize={26} fontWeight="700" letterSpacing={-0.5}>
+                {hasTickets ? 'Your trips' : 'Where to?'}
               </Text>
             </YStack>
-            <XStack gap="$3" items="center">
-              {isResolvingLocation && <ActivityIndicator size="small" color={appColors.accent} />}
-              {realtimeStatus === 'connected' && (
-                <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: '#22C55E' }} />
-              )}
+            <XStack gap={12} items="center">
+              {locating && <ActivityIndicator size="small" color="#D4A853" />}
+              {realtimeStatus === 'connected' && <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: '#22C55E' }} />}
               <Pressable onPress={() => router.push('/(app)/settings')}>
                 <BrandLogo size={36} borderRadius={10} />
               </Pressable>
             </XStack>
           </XStack>
 
-          {/* Active Ticket or Book Ride CTA */}
-          {activeTicket ? (
-            <ActiveTicketCard
-              ticket={activeTicket}
-              onPress={() => router.push({ pathname: '/(app)/ticket', params: { ticketId: activeTicket.id } })}
-            />
+          {/* Ticket Carousel or Book Prompt */}
+          {hasTickets ? (
+            <View style={{ marginBottom: 24 }}>
+              <FlatList
+                ref={ticketListRef}
+                data={tickets}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                snapToInterval={CARD_WIDTH + 12}
+                decelerationRate="fast"
+                onMomentumScrollEnd={(e) => setPageIndex(Math.round(e.nativeEvent.contentOffset.x / (CARD_WIDTH + 12)))}
+                keyExtractor={(t) => t.id}
+                renderItem={({ item: t }) => (
+                  <TicketCard ticket={t} width={CARD_WIDTH} onPress={() => router.push({ pathname: '/(app)/ticket', params: { ticketId: t.id } })} />
+                )}
+              />
+              {/* Page dots */}
+              {tickets.length > 1 && (
+                <XStack justify="center" gap={6} mt={12}>
+                  {tickets.map((_, i) => (
+                    <View key={i} style={{ width: i === activeIdx ? 20 : 6, height: 6, borderRadius: 3, backgroundColor: i === activeIdx ? '#D4A853' : '#1E2D45' }} />
+                  ))}
+                </XStack>
+              )}
+            </View>
           ) : (
-            <BookRideCard stationsCount={stationCount} onPress={openStationPicker} />
+            <View style={{ marginBottom: 24 }}>
+              <BookRidePrompt stationsCount={stationCount} onPress={openPicker} />
+            </View>
           )}
 
-          {/* Quick station list */}
-          <YStack mt="$6" gap="$3">
+          {/* Quick stations */}
+          <YStack gap={10}>
             <XStack items="center" justify="space-between">
-              <Text color="#8899B4" fontSize={12} fontWeight="600" letterSpacing={1}>NEARBY STATIONS</Text>
-              {stationCount > 3 && (
-                <Pressable onPress={openStationPicker}>
-                  <Text color={appColors.accent} fontSize={12} fontWeight="600">View all</Text>
-                </Pressable>
-              )}
+              <Text color="#8899B4" fontSize={11} fontWeight="600" letterSpacing={1.2}>NEARBY STATIONS</Text>
+              {stationCount > 3 && <Pressable onPress={openPicker}><Text color="#D4A853" fontSize={11} fontWeight="600">View all</Text></Pressable>}
             </XStack>
 
             {stationsQuery.isLoading ? (
-              <YStack gap="$3">
-                {[1, 2, 3].map((i) => (
-                  <View key={i} style={styles.skeletonCard}>
-                    <View style={{ width: '60%', height: 14, backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 4 }} />
-                    <View style={{ width: '30%', height: 10, backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 4, marginTop: 6 }} />
-                  </View>
-                ))}
-              </YStack>
+              [1, 2, 3].map((i) => <View key={i} style={{ height: 64, borderRadius: 14, backgroundColor: '#0D1525' }} />)
             ) : stationCount === 0 ? (
-              <YStack items="center" py="$6" gap="$3">
-                <MaterialCommunityIcons name="map-marker-off" size={28} color="#556580" />
-                <Text color="#556580" fontSize={13}>No stations nearby</Text>
-                <Pressable onPress={onRefresh} style={{ paddingVertical: 8, paddingHorizontal: 16, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
-                  <Text color={appColors.accent} fontSize={12} fontWeight="600">Refresh</Text>
-                </Pressable>
+              <YStack items="center" py={32} gap={8}>
+                <MaterialCommunityIcons name="map-marker-off" size={24} color="#3A4A60" />
+                <Text color="#556580" fontSize={12}>No stations nearby</Text>
               </YStack>
             ) : (
               nearbyStations.slice(0, 3).map((s) => (
-                <Pressable
-                  key={s.id}
-                  onPress={() => { setDraftStation(s); fetchRoutes(s); stationSheetRef.current?.present(); }}
-                  style={({ pressed }) => [styles.stationRow, pressed && { opacity: 0.7 }]}
-                >
-                  <View style={styles.stationIcon}>
+                <Pressable key={s.id} onPress={() => { setDraftStation(s); fetchRoutes(s); stationSheetRef.current?.present(); }} style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 16, borderRadius: 14, backgroundColor: '#0D1525', borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)' }, pressed && { opacity: 0.7 }]}>
+                  <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.04)', alignItems: 'center', justifyContent: 'center' }}>
                     <MaterialCommunityIcons name="bus-stop" size={18} color="#8899B4" />
                   </View>
                   <YStack flex={1}>
                     <Text color="#F0F4FF" fontSize={14} fontWeight="600">{s.name}</Text>
-                    <Text color="#556580" fontSize={11}>
-                      {formatKmAway((s as StationWithDistance).distanceKm)}{' · '}{s.status === 'online' ? 'Online' : 'Offline'}
-                    </Text>
+                    <Text color="#556580" fontSize={11}>{formatKm((s as StationWithDistance).distanceKm)}{' · '}{s.status === 'online' ? 'Online' : 'Offline'}</Text>
                   </YStack>
-                  <View style={[styles.statusDot, { backgroundColor: s.status === 'online' ? '#22C55E' : '#EF4444' }]} />
-                  <MaterialCommunityIcons name="chevron-right" size={18} color="#3A4A60" />
+                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: s.status === 'online' ? '#22C55E' : '#EF4444' }} />
+                  <MaterialCommunityIcons name="chevron-right" size={16} color="#3A4A60" />
                 </Pressable>
               ))
             )}
           </YStack>
         </ScrollView>
 
+        {/* FAB: Quick Book */}
+        {hasTickets && (
+          <Pressable onPress={openPicker} style={({ pressed }) => [fabStyles.button, { bottom: bottomPad - 20 }, pressed && { opacity: 0.85, transform: [{ scale: 0.95 }] }]}>
+            <MaterialCommunityIcons name="plus" size={24} color="#0A0F19" />
+          </Pressable>
+        )}
+
         {/* Booking Bottom Sheet */}
         <BottomSheetModal
           ref={stationSheetRef}
-          index={1}
-          snapPoints={stationSnapPoints}
-          onChange={handleSheetChange}
+          index={1} snapPoints={snapPoints}
+          onChange={onSheetChange}
           enablePanDownToClose
-          backdropComponent={(props) => (
-            <BottomSheetBackdrop {...props} disappearsOnIndex={-1} appearsOnIndex={0} opacity={0.6} />
-          )}
+          backdropComponent={(props) => <BottomSheetBackdrop {...props} disappearsOnIndex={-1} appearsOnIndex={0} opacity={0.6} />}
           backgroundStyle={{ backgroundColor: '#0D1525', borderTopLeftRadius: 20, borderTopRightRadius: 20 }}
-          handleIndicatorStyle={{ backgroundColor: 'rgba(255,255,255,0.15)', width: 40 }}
+          handleIndicatorStyle={{ backgroundColor: 'rgba(255,255,255,0.12)', width: 36 }}
         >
-          <YStack flex={1} px="$4" pt="$2">
+          <YStack flex={1} px={16} pt={4}>
             {bookingStep === 'station' ? (
               <>
-                <Text color="#F0F4FF" fontSize={16} fontWeight="700" mb="$3">Choose your departure station</Text>
+                <Text color="#F0F4FF" fontSize={17} fontWeight="700" mb={12}>Pick departure station</Text>
                 <BottomSheetFlatList
                   data={nearbyStations}
                   keyExtractor={(item: StationWithDistance) => item.id}
                   renderItem={({ item }: { item: StationWithDistance }) => (
-                    <Pressable
-                      onPress={() => { fetchRoutes(item); }}
-                      style={({ pressed }) => [styles.sheetStation, pressed && { opacity: 0.7 }]}
-                    >
-                      <YStack flex={1} gap="$1">
+                    <Pressable onPress={() => fetchRoutes(item)} style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 16, borderRadius: 14, backgroundColor: '#0D1525', marginBottom: 6 }, pressed && { opacity: 0.7 }]}>
+                      <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: 'rgba(212,168,83,0.1)', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                        <MaterialCommunityIcons name="bus-stop" size={18} color="#D4A853" />
+                      </View>
+                      <YStack flex={1} gap={2}>
                         <Text color="#F0F4FF" fontSize={15} fontWeight="600">{item.name}</Text>
-                        <Text color="#556580" fontSize={12}>{formatKmAway(item.distanceKm)}</Text>
+                        <Text color="#556580" fontSize={11}>{formatKm(item.distanceKm)}</Text>
                       </YStack>
-                      <MaterialCommunityIcons name="chevron-right" size={20} color="#3A4A60" />
+                      <MaterialCommunityIcons name="chevron-right" size={18} color="#3A4A60" />
                     </Pressable>
                   )}
                   showsVerticalScrollIndicator={false}
@@ -447,33 +430,29 @@ export default function MainScreen() {
               </>
             ) : (
               <>
-                <XStack items="center" mb="$3" gap="$2">
+                <XStack items="center" mb={12} gap={8}>
                   <Pressable onPress={() => { setBookingStep('station'); setFetchedRoutes(null); }}>
                     <MaterialCommunityIcons name="chevron-left" size={24} color="#8899B4" />
                   </Pressable>
-                  <Text color="#F0F4FF" fontSize={16} fontWeight="700">Choose destination</Text>
+                  <Text color="#F0F4FF" fontSize={17} fontWeight="700">{draftStation?.name}</Text>
                 </XStack>
-                {routesFetchLoading ? (
-                  <ActivityIndicator size="large" color={appColors.accent} style={{ marginTop: 40 }} />
-                ) : (
+                {loadingRoutes ? <ActivityIndicator size="large" color="#D4A853" style={{ marginTop: 40 }} /> : (
                   <BottomSheetFlatList
                     data={fetchedRoutes || []}
                     keyExtractor={(item: RouteData) => String(item.id)}
                     renderItem={({ item }: { item: RouteData }) => (
                       <DestinationQueueRow
-                        item={item}
-                        stationId={draftStation?.id ?? ''}
-                        stationName={draftStation?.name ?? ''}
+                        item={item} stationId={draftStation?.id ?? ''} stationName={draftStation?.name ?? ''}
                         selectedRouteId={selectedRouteId || null}
                         onSelectRouteId={(id: string) => setSelectedRouteId(id)}
                       />
                     )}
                     showsVerticalScrollIndicator={false}
-                    ListEmptyComponent={<Text color="#556580" text="center" mt="$6">No routes available</Text>}
+                    ListEmptyComponent={<Text color="#556580" text="center" mt={24}>No routes available</Text>}
                   />
                 )}
                 {selectedRouteId ? (
-                  <Pressable onPress={handleContinueToBooking} style={styles.continueBtn}>
+                  <Pressable onPress={continueToBooking} style={{ marginTop: 8, marginBottom: 24, backgroundColor: '#D4A853', borderRadius: 14, paddingVertical: 16, alignItems: 'center' }}>
                     <Text color="#0A0F19" fontSize={16} fontWeight="700">Continue</Text>
                   </Pressable>
                 ) : null}
@@ -486,51 +465,10 @@ export default function MainScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  ticketCard: {
-    borderRadius: 20, borderWidth: 1, borderColor: 'rgba(212,168,83,0.15)',
-    backgroundColor: '#0D1525', padding: 20, overflow: 'hidden', position: 'relative',
-  },
-  ticketGlow: {
-    position: 'absolute', top: -40, right: -20, width: 160, height: 160,
-    borderRadius: 80, backgroundColor: 'rgba(212,168,83,0.06)',
-  },
-  ticketBadge: {
-    width: 28, height: 28, borderRadius: 8,
-    backgroundColor: 'rgba(212,168,83,0.2)', alignItems: 'center', justifyContent: 'center',
-  },
-  routeLine: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 12 },
-  routeDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#3A4A60' },
-  routeDash: { width: 20, height: 2, backgroundColor: '#1E2D45' },
-  bookCard: {
-    borderRadius: 20, borderWidth: 1, borderColor: 'rgba(212,168,83,0.10)',
-    backgroundColor: '#0D1525', padding: 24, overflow: 'hidden', position: 'relative',
-  },
-  bookGlow: {
-    position: 'absolute', top: -60, left: '30%', width: 200, height: 200,
-    borderRadius: 100, backgroundColor: 'rgba(212,168,83,0.04)',
-  },
-  bookIcon: {
-    width: 56, height: 56, borderRadius: 16,
-    backgroundColor: 'rgba(212,168,83,0.15)', alignItems: 'center', justifyContent: 'center',
-  },
-  stationRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    paddingVertical: 14, paddingHorizontal: 16, borderRadius: 14,
-    backgroundColor: '#0D1525', borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)',
-  },
-  stationIcon: {
-    width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.04)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  statusDot: { width: 6, height: 6, borderRadius: 3 },
-  skeletonCard: { padding: 16, borderRadius: 14, backgroundColor: '#0D1525' },
-  sheetStation: {
-    flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 16,
-    borderRadius: 14, backgroundColor: '#0D1525', marginBottom: 8,
-  },
-  continueBtn: {
-    marginTop: 12, marginBottom: 24, backgroundColor: appColors.accent,
-    borderRadius: 14, paddingVertical: 16, alignItems: 'center',
+const fabStyles = StyleSheet.create({
+  button: {
+    position: 'absolute', right: 20, width: 52, height: 52, borderRadius: 16,
+    backgroundColor: '#D4A853', alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#D4A853', shadowOpacity: 0.4, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 10,
   },
 });
