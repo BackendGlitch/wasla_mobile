@@ -10,7 +10,6 @@ import { formatCurrency } from '../../src/lib/bookingFlow';
 import { toUserFacingErrorCopy } from '../../src/lib/networkErrors';
 import { singleRouteParam } from '../../src/lib/postAuthFlow';
 import { useBookingRoutesLiveStore, useBookingStore, useStationStore } from '../../src/store';
-import { scheduleDepartureReminder } from '../../src/lib/reminders';
 import { appColors } from '../../src/theme/appTheme';
 
 export default function BookingScreen() {
@@ -177,7 +176,6 @@ export default function BookingScreen() {
           vehiclePlate: ticket.vehicle_plate ?? 'Assigned',
         };
         addTicket(ticketRecord);
-        scheduleDepartureReminder(ticketRecord);
         router.replace({ pathname: '/(app)/ticket', params: { ticketId: ticket.id } });
         return;
       }

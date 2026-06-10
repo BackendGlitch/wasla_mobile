@@ -1,16 +1,14 @@
 import { Platform } from 'react-native';
 import dayjs from 'dayjs';
 
-let Notifications: any = null;
-try {
-  Notifications = require('expo-notifications');
-} catch { /* Expo Go — notifications unavailable */ }
-
-/** Schedule a departure reminder 15 minutes before ETD. */
+/** Schedule a departure reminder 15 minutes before ETD. Works only in dev builds, silently skipped in Expo Go. */
 export async function scheduleDepartureReminder(ticket: {
   id: string; stationName: string; destinationName: string;
   etdIso?: string; etdLabel?: string; vehiclePlate?: string;
 }) {
+  // Dynamic import — avoids Metro bundling issues in Expo Go
+  let Notifications: any;
+  try { Notifications = require('expo-notifications'); } catch { return; }
   if (!Notifications) return;
   const etd = dayjs(ticket.etdIso);
   if (!etd.isValid()) return;
