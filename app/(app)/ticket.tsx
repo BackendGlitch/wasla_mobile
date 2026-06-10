@@ -121,7 +121,7 @@ export default function TicketScreen() {
                 <QRCode value={ticket.qrValue || ticket.id} size={160} backgroundColor="#F0F4FF" color="#060B14" />
               </View>
             </View>
-            <Text color="#556580" fontSize={10} fontFamily="monospace">{ticket.id?.slice(0, 8).toUpperCase()}</Text>
+            <Text color="#556580" fontSize={10}>{ticket.id?.slice(0, 8).toUpperCase()}</Text>
           </YStack>
 
           {/* Dotted divider */}
