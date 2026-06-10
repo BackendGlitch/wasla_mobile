@@ -10,6 +10,7 @@ import { formatCurrency } from '../../src/lib/bookingFlow';
 import { toUserFacingErrorCopy } from '../../src/lib/networkErrors';
 import { singleRouteParam } from '../../src/lib/postAuthFlow';
 import { useBookingRoutesLiveStore, useBookingStore, useStationStore } from '../../src/store';
+import { scheduleDepartureReminder } from '../../src/lib/reminders';
 import { appColors } from '../../src/theme/appTheme';
 
 export default function BookingScreen() {
@@ -155,11 +156,11 @@ export default function BookingScreen() {
       // Placeholder mode: ticket returned immediately — skip payment, go to ticket
       const ticket = (res as any)?.ticket;
       if (ticket?.id) {
-        addTicket({
+        const ticketRecord = {
           id: ticket.id,
           qrValue: ticket.qr_payload ?? '',
           issuedAt: new Date().toISOString(),
-          paymentStatus: 'confirmed',
+          paymentStatus: 'confirmed' as const,
           stationId: ticket.station_id ?? sid,
           stationName,
           routeId: rid,
@@ -173,7 +174,9 @@ export default function BookingScreen() {
           etdIso,
           etdLabel,
           vehiclePlate: ticket.vehicle_plate ?? 'Assigned',
-        });
+        };
+        addTicket(ticketRecord);
+        scheduleDepartureReminder(ticketRecord);
         router.replace({ pathname: '/(app)/ticket', params: { ticketId: ticket.id } });
         return;
       }

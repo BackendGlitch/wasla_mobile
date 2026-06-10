@@ -20,6 +20,7 @@ import { buildBookingRouteMeta } from '../../src/lib/bookingFlow';
 import { cancelBooking } from '../../src/lib/bookingApi';
 import { appColors } from '../../src/theme/appTheme';
 import { useBookingRoutesLiveStore, useBookingStore, useConnectivityStore, useRealtimeStore, useStationStore, type StationWithDistance } from '../../src/store';
+import { SkeletonList } from '../../src/components/Skeleton';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const LAST_KNOWN_MAX_AGE_MS = 10 * 60 * 1000;
@@ -398,7 +399,7 @@ export default function MainScreen() {
             </XStack>
 
             {stationsQuery.isLoading ? (
-              [1, 2, 3].map((i) => <View key={i} style={{ height: 64, borderRadius: 14, backgroundColor: '#0D1525' }} />)
+              <SkeletonList count={3} />
             ) : stationCount === 0 ? (
               <YStack items="center" py={32} gap={8}>
                 <MaterialCommunityIcons name="map-marker-off" size={24} color="#3A4A60" />

@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import type { Station, StationStatus } from '../lib/stationsApi';
 
+const FAVORITES_KEY = 'wasla_favorites';
+
 export type StationWithDistance = Station & {
   distanceKm: number | null;
 };
@@ -19,11 +21,13 @@ interface StationState {
   stations: Station[];
   nearbyStations: StationWithDistance[];
   selectedStation: StationWithDistance | null;
+  favorites: string[];
   isResolvingLocation: boolean;
   locationPermission: 'granted' | 'denied' | 'undetermined';
   setStations: (stations: Station[]) => void;
   setNearbyStations: (stations: StationWithDistance[]) => void;
   setSelectedStation: (station: StationWithDistance | null) => void;
+  toggleFavorite: (stationId: string) => void;
   setIsResolvingLocation: (isResolving: boolean) => void;
   setLocationPermission: (permission: 'granted' | 'denied' | 'undetermined') => void;
   applyStationStatusUpdate: (stationId: string, status: StationStatus) => void;
@@ -33,11 +37,16 @@ export const useStationStore = create<StationState>((set) => ({
   stations: [],
   nearbyStations: [],
   selectedStation: null,
+  favorites: [],
   isResolvingLocation: true,
   locationPermission: 'undetermined',
   setStations: (stations) => set({ stations }),
   setNearbyStations: (nearbyStations) => set({ nearbyStations }),
   setSelectedStation: (selectedStation) => set({ selectedStation }),
+  toggleFavorite: (id) => set((s) => {
+    const next = s.favorites.includes(id) ? s.favorites.filter((f) => f !== id) : [...s.favorites, id];
+    return { favorites: next };
+  }),
   setIsResolvingLocation: (isResolvingLocation) => set({ isResolvingLocation }),
   setLocationPermission: (locationPermission) => set({ locationPermission }),
   applyStationStatusUpdate: (stationId, status) =>
