@@ -88,10 +88,6 @@ export default function HistoryScreen() {
                   onPress={() => router.push({ pathname: '/(app)/ticket', params: { ticketId: t.id } })}
                   style={({ pressed }) => [hs.card, { backgroundColor: bgColor }, pressed && { opacity: 0.7 }]}
                 >
-                  <View style={[hs.cardLeft, { backgroundColor: accentColor }]}>
-                    <View style={[hs.routeDot, { backgroundColor: accentColor }]} />
-                    <View style={hs.routeLine} />
-                  </View>
                   <YStack flex={1} gap={4}>
                     <XStack items="center" justify="space-between">
                       <XStack gap={6} items="center">
