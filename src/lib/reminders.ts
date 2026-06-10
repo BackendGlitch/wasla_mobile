@@ -28,7 +28,7 @@ export async function scheduleDepartureReminder(ticket: {
       sound: 'default',
       ...(Platform.OS === 'android' ? { channelId: 'departures' } : {}),
     },
-    trigger: { type: 'date' as const, date: triggerTime.toDate() },
+    trigger: { date: triggerTime.toDate() } as Notifications.NotificationTriggerInput,
   });
 }
 
