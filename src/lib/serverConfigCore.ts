@@ -1,7 +1,7 @@
 const ANDROID_EMULATOR_HOST = '10.0.2.2';
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1']);
 const CENTRAL_SERVER_URL_ENV = 'EXPO_PUBLIC_CENTRAL_SERVER_URL';
-const HARDCODED_URL = 'https://api.backendglitch.com';
+const HARDCODED_URL = 'https://backend.wasla.fun';
 
 function stripTrailingSlashes(value: string): string {
   return value.replace(/\/+$/, '');

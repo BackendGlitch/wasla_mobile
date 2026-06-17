@@ -1,136 +1,66 @@
-import { Pressable, KeyboardAvoidingView, Platform } from 'react-native';
-import { YStack, XStack, Text } from 'tamagui';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import AuthBackdrop from '../../src/components/auth/AuthBackdrop';
 import { BrandLogo } from '../../src/components/BrandLogo';
-import { authColors } from '../../src/theme/authTheme';
 
 export default function AuthWelcomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
   return (
-    <AuthBackdrop>
+    <View style={[s.root, { paddingTop: Math.max(insets.top, 20) + 48, paddingBottom: Math.max(insets.bottom, 20) + 28 }]}>
       <StatusBar style="light" />
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <YStack
-          flex={1}
-          px="$5"
-          pt={Math.max(insets.top, 12) + 24}
-          pb={Math.max(insets.bottom, 16) + 24}
-          justify="space-between"
-        >
-          <YStack gap="$6" flex={1} justify="center">
-            <YStack gap="$4" items="center">
-              <BrandLogo size={88} />
-              <Text fontSize="$10" fontWeight="900" color={authColors.textPrimary} letterSpacing={1.5}>
-                WASLA
-              </Text>
-              <Text
-                fontSize="$6"
-                fontWeight="700"
-                color={authColors.textPrimary}
-                text="center"
-                lineHeight={28}
-              >
-                Your trips, one secure account
-              </Text>
-              <Text fontSize="$4" color={authColors.textSecondary} text="center" lineHeight={22} style={{ maxWidth: 320 }}>
-                Create an account with your email and phone, verify both, and sign in with SMS or password anytime.
-              </Text>
-            </YStack>
+      <View style={s.glow} pointerEvents="none" />
 
-            <YStack gap="$3" width="100%" style={{ alignSelf: 'center', maxWidth: 320 }}>
-              <Pressable
-                onPress={() => router.push('/(auth)/sign-up')}
-                style={({ pressed }) => ({
-                  paddingVertical: 16,
-                  paddingHorizontal: 20,
-                  borderRadius: 12,
-                  backgroundColor: pressed ? authColors.accentSoft : authColors.accent,
-                  borderWidth: 1,
-                  borderColor: authColors.borderStrong,
-                })}
-              >
-                <XStack items="center" justify="center" gap="$2">
-                  <MaterialCommunityIcons name="account-plus-outline" size={22} color={authColors.bg} />
-                  <Text color={authColors.bg} fontWeight="800" fontSize="$5">
-                    Create account
-                  </Text>
-                </XStack>
-              </Pressable>
+      <View style={s.hero}>
+        <View style={s.logoBox}>
+          <BrandLogo size={80} borderRadius={22} />
+        </View>
+        <View style={s.divider} />
+        <Text style={s.title}>WASLA</Text>
+        <Text style={s.subtitle}>Shared rides across Tunisia</Text>
+      </View>
 
-              <Pressable
-                onPress={() => router.push('/(auth)/sign-in')}
-                testID="auth-welcome-signin"
-                style={({ pressed }) => ({
-                  paddingVertical: 16,
-                  paddingHorizontal: 20,
-                  borderRadius: 12,
-                  backgroundColor: pressed ? authColors.accentSoft : 'transparent',
-                  borderWidth: 1,
-                  borderColor: authColors.borderStrong,
-                })}
-              >
-                <XStack items="center" justify="center" gap="$2">
-                  <MaterialCommunityIcons name="login" size={22} color={authColors.textPrimary} />
-                  <Text color={authColors.textPrimary} fontWeight="800" fontSize="$5">
-                    Sign in
-                  </Text>
-                </XStack>
-              </Pressable>
-            </YStack>
-          </YStack>
+      <View style={{ flex: 1, minHeight: 40 }} />
 
-          <XStack flexWrap="wrap" justify="center" items="center" gap="$1" px="$3">
-            <Text fontSize="$2" color={authColors.textMuted} lineHeight={18}>
-              By continuing you agree to Wasla&apos;s{' '}
-            </Text>
-            <Pressable
-              onPress={() => router.push('/(auth)/terms')}
-              accessibilityRole="link"
-              accessibilityHint="Opens Terms of Service"
-              hitSlop={{ top: 10, bottom: 10, left: 4, right: 4 }}
-            >
-              <Text
-                fontSize="$2"
-                fontWeight="700"
-                color={authColors.accent}
-                style={{ textDecorationLine: 'underline', textDecorationColor: authColors.accent }}
-              >
-                Terms
-              </Text>
-            </Pressable>
-            <Text fontSize="$2" color={authColors.textMuted} lineHeight={18}>
-              {' '}and{' '}
-            </Text>
-            <Pressable
-              onPress={() => router.push('/(auth)/privacy')}
-              accessibilityRole="link"
-              accessibilityHint="Opens Privacy Policy"
-              hitSlop={{ top: 10, bottom: 10, left: 4, right: 4 }}
-            >
-              <Text
-                fontSize="$2"
-                fontWeight="700"
-                color={authColors.accent}
-                style={{ textDecorationLine: 'underline', textDecorationColor: authColors.accent }}
-              >
-                Privacy Policy
-              </Text>
-            </Pressable>
-            <Text fontSize="$2" color={authColors.textMuted} lineHeight={18}>
-              .
-            </Text>
-          </XStack>
-        </YStack>
-      </KeyboardAvoidingView>
-    </AuthBackdrop>
+      <View style={s.buttons}>
+        <Pressable onPress={() => router.push('/(auth)/sign-up')} style={({ pressed }) => [s.btn, s.primary, pressed && { opacity: 0.85 }]}>
+          <MaterialCommunityIcons name="account-plus" size={20} color="#0A0F19" />
+          <Text style={s.btnTextPrimary}>Create account</Text>
+        </Pressable>
+
+        <Pressable onPress={() => router.push('/(auth)/sign-in')} style={({ pressed }) => [s.btn, s.outline, pressed && { opacity: 0.7 }]}>
+          <MaterialCommunityIcons name="login" size={20} color="#F0F4FF" />
+          <Text style={s.btnTextOutline}>Sign in</Text>
+        </Pressable>
+      </View>
+
+      <Text style={s.legal}>
+        By continuing you agree to{' '}
+        <Text style={s.link} onPress={() => router.push('/(auth)/terms')}>Terms</Text>
+        {' '}and{' '}
+        <Text style={s.link} onPress={() => router.push('/(auth)/privacy')}>Privacy</Text>
+      </Text>
+    </View>
   );
 }
+
+const s = StyleSheet.create({
+  root: { flex: 1, backgroundColor: '#060B14', paddingHorizontal: 24 },
+  glow: { position: 'absolute', top: -120, right: -80, width: 300, height: 300, borderRadius: 150, backgroundColor: 'rgba(212,168,83,0.04)' },
+  hero: { alignItems: 'center', marginTop: 32 },
+  logoBox: { width: 120, height: 120, borderRadius: 30, backgroundColor: '#0D1525', borderWidth: 1, borderColor: 'rgba(212,168,83,0.12)', alignItems: 'center', justifyContent: 'center' },
+  divider: { width: 32, height: 3, borderRadius: 2, backgroundColor: '#D4A853', marginTop: 24 },
+  title: { color: '#F0F4FF', fontSize: 26, fontWeight: '800', letterSpacing: 2, marginTop: 16 },
+  subtitle: { color: '#8899B4', fontSize: 13, marginTop: 6 },
+  buttons: { gap: 12, width: '100%', alignSelf: 'center', marginBottom: 20 },
+  btn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 16, borderRadius: 14, gap: 8 },
+  primary: { backgroundColor: '#D4A853' },
+  outline: { backgroundColor: 'transparent', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  btnTextPrimary: { color: '#0A0F19', fontSize: 15, fontWeight: '700' },
+  btnTextOutline: { color: '#F0F4FF', fontSize: 15, fontWeight: '700' },
+  legal: { color: '#556580', fontSize: 11, textAlign: 'center', paddingTop: 8 },
+  link: { color: '#D4A853', fontWeight: '600' },
+});

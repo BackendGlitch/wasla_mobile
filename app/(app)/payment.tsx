@@ -1,553 +1,150 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
-import dayjs from 'dayjs';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import {
-  ActivityIndicator,
-  Alert,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  View,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { WebView, type WebViewNavigation } from 'react-native-webview';
-import { Text, XStack, YStack } from 'tamagui';
-import { isAxiosError } from 'axios';
-import api from '../../src/lib/api';
-import { confirmBookingInApp, getBooking } from '../../src/lib/bookingApi';
-import { formatCurrency } from '../../src/lib/bookingFlow';
-import { toUserFacingErrorCopy } from '../../src/lib/networkErrors';
-import { singleRouteParam } from '../../src/lib/postAuthFlow';
-import { useBookingStore } from '../../src/store';
-import { appColors } from '../../src/theme/appTheme';
-
-type PollState = 'idle' | 'polling' | 'confirmed' | 'error';
+import { useState, useCallback } from "react";
+import { View, Text, TouchableOpacity, Alert, ActivityIndicator } from "react-native";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { WebView } from "react-native-webview";
+import api from "../../src/lib/api";
 
 export default function PaymentScreen() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
-  const addTicket = useBookingStore((state) => state.addTicket);
-  const contentPadTop = Math.max(insets.top + 16, 56);
-  const [confirming, setConfirming] = useState(false);
-  const [webViewOpen, setWebViewOpen] = useState(false);
-  const [pollState, setPollState] = useState<PollState>('idle');
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
-
   const params = useLocalSearchParams<{
-    centralBookingId?: string | string[];
-    paymentUrl?: string | string[];
-    stationId?: string | string[];
-    stationName?: string | string[];
-    routeId?: string | string[];
-    routeName?: string | string[];
-    departureName?: string | string[];
-    destinationName?: string | string[];
-    availableSeats?: string | string[];
-    seatCount?: string | string[];
-    pricePerSeat?: string | string[];
-    totalPrice?: string | string[];
-    etdIso?: string | string[];
-    etdLabel?: string | string[];
+    paymentUrl?: string;
+    centralBookingId?: string;
+    amount?: string;
+    description?: string;
   }>();
 
-  const centralBookingId = singleRouteParam(params.centralBookingId) ?? '';
-  const paymentUrl = singleRouteParam(params.paymentUrl) ?? '';
-  const stationId = singleRouteParam(params.stationId) ?? '';
-  const stationName = singleRouteParam(params.stationName) ?? 'Depart station';
-  const routeId = singleRouteParam(params.routeId) ?? '';
-  const routeName = singleRouteParam(params.routeName) ?? 'Selected route';
-  const departureName = singleRouteParam(params.departureName) ?? stationName;
-  const destinationName = singleRouteParam(params.destinationName) ?? routeName;
-  const availableSeats = Number(singleRouteParam(params.availableSeats) ?? 0) || 0;
-  const seatCount = Number(singleRouteParam(params.seatCount) ?? 0) || 0;
-  const pricePerSeat = Number(singleRouteParam(params.pricePerSeat) ?? 0) || 0;
-  const totalPrice = Number(singleRouteParam(params.totalPrice) ?? 0) || 0;
-  const etdIso = singleRouteParam(params.etdIso) ?? new Date().toISOString();
-  const etdLabel = singleRouteParam(params.etdLabel) ?? '--:--';
+  const paymentUrl = params.paymentUrl ?? "";
+  const bookingId = params.centralBookingId ?? "";
+  const amount = Number(params.amount ?? "0") || 0;
+  const description = params.description ?? "Wasla booking";
+  const [showWebView, setShowWebView] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [error, setError] = useState("");
+  const [paymentDone, setPaymentDone] = useState(false);
+  const amountTnd = (amount / 1000).toFixed(3);
 
-  const hasRealPaymentUrl =
-    paymentUrl.trim().length > 0 && !paymentUrl.includes('placeholder');
-
-  // ── Polling for booking confirmation ───────────────────────
-  const stopPolling = useCallback(() => {
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-    if (abortRef.current) {
-      abortRef.current.abort();
-      abortRef.current = null;
-    }
-  }, []);
-
-  const confirmPaymentAfterRedirect = useCallback(async () => {
-    if (!centralBookingId.trim()) return;
-    stopPolling();
-    setPollState('polling');
-
+  const confirmTicket = useCallback(async (bId: string): Promise<boolean> => {
     try {
-      const result = await api.post(
-        `/bookings/${encodeURIComponent(centralBookingId.trim())}/confirm-payment`,
-        undefined,
-        { __waslaMaxRetries: 2 },
-      );
-      const data = result.data;
-      const t = data?.ticket;
-      if (t?.id) {
-        // Payment confirmed — got ticket!
-        stopPolling();
-        setPollState('confirmed');
-        setWebViewOpen(false);
-        router.replace({
-          pathname: '/(app)/ticket',
-          params: {
-            ticketId: t.id,
-            bookingId: centralBookingId.trim(),
-          },
-        });
-      } else if (data?.status === 'pending') {
-        // NexaPay is still processing — keep polling
-        startPolling();
+      const res = await api.post(`/bookings/${bId}/confirm-payment`);
+      if (res.data?.ticket || res.data?.already_confirmed) {
+        Alert.alert("Ticket Ready!", "Booking confirmed.", [
+          { text: "View Ticket", onPress: () => router.replace("/(app)/ticket") },
+        ]);
+        return true;
       }
+      return false;
     } catch {
-      // Network error — keep polling
-      startPolling();
+      return false;
     }
-  }, [centralBookingId, stopPolling, router]);
+  }, [router]);
 
-  const startPolling = useCallback(() => {
-    if (!centralBookingId.trim()) return;
-    stopPolling();
-    setPollState('polling');
-
-    const poll = async () => {
-      try {
-        const booking = await getBooking(centralBookingId.trim());
-        if (booking.status === 'CONFIRMED') {
-          stopPolling();
-          setPollState('confirmed');
-          setWebViewOpen(false);
-          router.replace({
-            pathname: '/(app)/ticket',
-            params: { bookingId: centralBookingId.trim() },
-          });
-        }
-      } catch {
-        // Silently retry on next interval
-      }
-    };
-
-    pollRef.current = setInterval(poll, 2500);
-    void poll();
-  }, [centralBookingId, stopPolling, router]);
-
-  useEffect(() => {
-    return () => stopPolling();
-  }, [stopPolling]);
-
-  // ── WebView navigation handler ──────────────────────────────
-  const handleWebViewNavigation = useCallback(
-    (navState: WebViewNavigation) => {
-      const url = navState.url.toLowerCase();
-      // NexaPay redirects after payment — detect return page or success patterns
-      if (
-        url.includes('/payments/return') ||
-        url.includes('payment-return') ||
-        url.includes('/success') ||
-        url.includes('payment_success') ||
-        url.includes('status=succeeded')
-      ) {
-        void confirmPaymentAfterRedirect();
-      }
-      if (
-        url.includes('/cancel') ||
-        url.includes('/failure') ||
-        url.includes('payment_failed')
-      ) {
-        setWebViewOpen(false);
-        stopPolling();
-        Alert.alert(
-          'Payment cancelled',
-          'The payment was not completed. Your seat hold will expire shortly.',
-        );
-      }
-    },
-    [confirmPaymentAfterRedirect, stopPolling],
-  );
-
-  // ── Placeholder / fallback confirmation ────────────────────
-  const handleConfirmPayment = async () => {
-    if (!centralBookingId.trim()) {
-      Alert.alert(
-        'Missing booking',
-        'Go back one step and tap Continue again so we can hold seats at the station.',
-      );
-      return;
-    }
-    if (confirming) return;
-
+  const startPolling = useCallback(async () => {
+    setShowWebView(false);
+    setPaymentDone(true);
     setConfirming(true);
-    try {
-      const data = await confirmBookingInApp(centralBookingId.trim());
-      const t = data.ticket;
-      if (!t?.id || !t.qr_payload) {
-        throw new Error('Invalid ticket response from server.');
-      }
-
-      const plate =
-        (typeof t.vehicle_plate === 'string' && t.vehicle_plate.trim()) || 'Pending';
-      const etdFromServer = t.etd_timestamp
-        ? dayjs(t.etd_timestamp).toISOString()
-        : etdIso;
-      const etdLabelFromServer = t.etd_timestamp
-        ? dayjs(t.etd_timestamp).format('HH:mm')
-        : etdLabel;
-      const issuedAt = t.created_at
-        ? dayjs(t.created_at).toISOString()
-        : new Date().toISOString();
-
-      addTicket({
-        id: t.id,
-        qrValue: t.qr_payload,
-        issuedAt,
-        paymentStatus: 'confirmed', state: 'active',
-        stationId: t.station_id ?? stationId,
-        stationName,
-        routeId,
-        routeName,
-        departureName,
-        destinationName,
-        availableSeats,
-        seatCount: typeof t.seats_booked === 'number' ? t.seats_booked : seatCount,
-        pricePerSeat,
-        totalPrice,
-        etdIso: etdFromServer,
-        etdLabel: etdLabelFromServer,
-        vehiclePlate: plate,
-      });
-
-      router.replace({
-        pathname: '/(app)/ticket',
-        params: { ticketId: t.id },
-      });
-    } catch (error: unknown) {
-      if (isAxiosError(error) && error.response?.status === 401) {
-        Alert.alert('Sign in required', 'Please sign in to complete this booking.');
-        return;
-      }
-      const friendly = toUserFacingErrorCopy(
-        error,
-        'Could not confirm payment with the station.',
-      );
-      Alert.alert(
-        friendly.title,
-        (friendly.detail ?? '').trim() || 'Please try again in a moment.',
-      );
-    } finally {
-      setConfirming(false);
+    for (let i = 0; i < 10; i++) {
+      await new Promise(r => setTimeout(r, 2000));
+      const done = await confirmTicket(bookingId);
+      if (done) { setConfirming(false); return; }
     }
-  };
+    setConfirming(false);
+    Alert.alert("Taking longer...", "Check your bookings shortly.", [
+      { text: "OK", onPress: () => router.replace("/(app)") },
+    ]);
+  }, [bookingId, confirmTicket, router]);
 
-  const navigateBack = () => {
-    if (router.canGoBack()) router.back();
-    else router.replace('/(app)');
-  };
+  // Detect navigation to the backend return page (real HTTPS URL, loads fine in WebView)
+  const handleNavChange = useCallback((navState: { url?: string }) => {
+    const url = navState.url || "";
+    if (url.includes("/payments/return")) {
+      if (url.includes("status=succeeded") || url.includes("status%3Dsucceeded")) {
+        startPolling();
+      } else if (url.includes("status=failed") || url.includes("status%3Dfailed")) {
+        setShowWebView(false);
+        setError("Payment was declined. Please try again.");
+      }
+    }
+  }, [startPolling]);
 
-  // ── If WebView is open, show full-screen payment ────────────
-  if (webViewOpen && hasRealPaymentUrl) {
+  if (showWebView && paymentUrl) {
     return (
-      <View style={styles.webViewContainer}>
-        <View style={[styles.webViewHeader, { paddingTop: insets.top + 8 }]}>
-          <Pressable
-            onPress={() => {
-              setWebViewOpen(false);
-              stopPolling();
-            }}
-            style={styles.webViewClose}
-          >
-            <MaterialCommunityIcons
-              name="close"
-              size={22}
-              color={appColors.textPrimary}
-            />
-            <Text color={appColors.textPrimary} fontSize="$3" fontWeight="600" ml="$2">
-              Cancel payment
-            </Text>
-          </Pressable>
-          {pollState === 'polling' && (
-            <XStack items="center" gap="$2">
-              <ActivityIndicator size="small" color={appColors.accent} />
-              <Text color={appColors.accent} fontSize="$2">
-                Waiting for confirmation...
-              </Text>
-            </XStack>
-          )}
+      <View style={{ flex: 1, backgroundColor: "#060B14" }}>
+        <View style={{
+          height: 56, backgroundColor: "#0d0d0d", flexDirection: "row",
+          alignItems: "center", justifyContent: "space-between",
+          paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: "#1a1a1a",
+        }}>
+          <Text style={{ color: "#F0F4FF", fontSize: 16, fontWeight: "600" }}>NexaPay Checkout</Text>
+          <TouchableOpacity onPress={() => setShowWebView(false)}>
+            <Text style={{ color: "#EF4444", fontSize: 15, fontWeight: "600" }}>Cancel</Text>
+          </TouchableOpacity>
         </View>
         <WebView
-          source={{ uri: paymentUrl.trim() }}
-          onNavigationStateChange={handleWebViewNavigation}
+          source={{ uri: paymentUrl }}
+          style={{ flex: 1 }}
+          onNavigationStateChange={handleNavChange}
+          javaScriptEnabled
           startInLoadingState
           renderLoading={() => (
-            <ActivityIndicator
-              size="large"
-              color={appColors.accent}
-              style={styles.webViewLoader}
-            />
+            <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#060B14" }}>
+              <ActivityIndicator color="#00d4aa" size="large" />
+            </View>
           )}
-          style={styles.webView}
         />
       </View>
     );
   }
 
-  // ── Standard payment review screen ──────────────────────────
+  if (confirming) {
+    return (
+      <View style={{ flex: 1, backgroundColor: "#060B14", padding: 20, justifyContent: "center", alignItems: "center", gap: 16 }}>
+        <ActivityIndicator color="#00d4aa" size="large" />
+        <Text style={{ color: "#F0F4FF", fontSize: 18, fontWeight: "bold" }}>Confirming booking...</Text>
+        <Text style={{ color: "#8899B4", fontSize: 13 }}>Payment received. Generating your ticket.</Text>
+      </View>
+    );
+  }
+
   return (
-    <YStack flex={1} bg={appColors.bg}>
-      <ScrollView
-        contentContainerStyle={[styles.content, { paddingTop: contentPadTop }]}
-      >
-        <View style={styles.screenGlow} pointerEvents="none" />
-        <Pressable onPress={navigateBack} style={styles.backButton}>
-          <XStack items="center" gap="$2">
-            <MaterialCommunityIcons
-              name="arrow-left"
-              size={20}
-              color={appColors.textPrimary}
-            />
-            <Text color={appColors.textPrimary} fontSize="$4" fontWeight="700">
-              Back
-            </Text>
-          </XStack>
-        </Pressable>
-
-        <YStack gap="$5">
-          <YStack gap="$2">
-            <Text color={appColors.textMuted} fontSize="$2" letterSpacing={0.7}>
-              PAYMENT
-            </Text>
-            <Text color={appColors.textPrimary} fontSize="$10" fontWeight="800">
-              Review and pay
-            </Text>
-          </YStack>
-
-          <View style={styles.paymentCard}>
-            <Text color={appColors.textPrimary} fontSize="$6" fontWeight="800">
-              Trip summary
-            </Text>
-
-            <YStack mt="$4" gap="$3">
-              <SummaryRow label="Destination" value={destinationName} />
-              <SummaryRow label="Number of seats" value={`${seatCount}`} />
-              <MaskedVehicleLpRow />
-              <SummaryRow
-                label="Price"
-                value={formatCurrency(totalPrice)}
-                highlight
-              />
-            </YStack>
-          </View>
-
-          {hasRealPaymentUrl ? (
-            <Pressable
-              onPress={() => {
-                setWebViewOpen(true);
-                startPolling();
-              }}
-              style={({ pressed }) => [
-                styles.primaryButton,
-                pressed ? styles.buttonPressed : null,
-              ]}
-            >
-              <Text color={appColors.bg} fontSize="$4" fontWeight="800">
-                Pay with NexaPay
-              </Text>
-            </Pressable>
-          ) : (
-            <Pressable
-              disabled={confirming}
-              onPress={() => void handleConfirmPayment()}
-              style={({ pressed }) => [
-                styles.primaryButton,
-                confirming ? styles.disabledControl : null,
-                pressed && !confirming ? styles.buttonPressed : null,
-              ]}
-            >
-              {confirming ? (
-                <ActivityIndicator color={appColors.bg} />
-              ) : (
-                <Text color={appColors.bg} fontSize="$4" fontWeight="800">
-                  Confirm payment
-                </Text>
-              )}
-            </Pressable>
-          )}
-        </YStack>
-      </ScrollView>
-    </YStack>
-  );
-}
-
-function SummaryRow({
-  label,
-  value,
-  highlight = false,
-}: {
-  label: string;
-  value: string;
-  highlight?: boolean;
-}) {
-  return (
-    <XStack items="center" justify="space-between" gap="$3">
-      <Text color={appColors.textMuted} fontSize="$3">
-        {label}
+    <View style={{ flex: 1, backgroundColor: "#060B14", padding: 20, justifyContent: "center", gap: 16 }}>
+      <Text style={{ color: "#F0F4FF", fontSize: 22, fontWeight: "bold", textAlign: "center" }}>
+        Pay with NexaPay
       </Text>
-      <Text
-        color={highlight ? appColors.accent : appColors.textPrimary}
-        fontSize="$4"
-        fontWeight="700"
-      >
-        {value}
-      </Text>
-    </XStack>
-  );
-}
+      <Text style={{ color: "#8899B4", fontSize: 16, textAlign: "center" }}>{amountTnd} TND</Text>
+      <Text style={{ color: "#556580", fontSize: 13, textAlign: "center" }}>{description}</Text>
 
-function MaskedVehicleLpRow() {
-  return (
-    <YStack gap="$1.5">
-      <XStack items="center" justify="space-between" gap="$3">
-        <Text color={appColors.textMuted} fontSize="$3">
-          Vehicle LP
-        </Text>
-        <View style={styles.lpMaskShell}>
-          <Text
-            selectable={false}
-            color={appColors.textPrimary}
-            fontSize="$4"
-            fontWeight="700"
-            style={styles.lpUnderlayText}
+      {paymentDone ? (
+        <View style={{ alignItems: "center", gap: 12 }}>
+          <Text style={{ color: "#22C55E", fontSize: 18, fontWeight: "bold" }}>Payment Complete!</Text>
+          <TouchableOpacity
+            onPress={() => startPolling()}
+            style={{ backgroundColor: "#00d4aa", padding: 16, borderRadius: 12, width: "100%", alignItems: "center" }}
           >
-            ···· ···· ····
-          </Text>
-          <BlurView
-            experimentalBlurMethod={
-              Platform.OS === 'android' ? 'dimezisBlurView' : undefined
-            }
-            intensity={Platform.OS === 'android' ? 70 : 50}
-            tint="dark"
-            style={styles.lpBlur}
-          />
+            <Text style={{ color: "#000", fontWeight: "bold", fontSize: 16 }}>Get My Ticket</Text>
+          </TouchableOpacity>
         </View>
-      </XStack>
-      <Text color={appColors.textMuted} fontSize="$2">
-        The real license plate is loaded from the station after you confirm payment.
-      </Text>
-    </YStack>
+      ) : error ? (
+        <View style={{ alignItems: "center", gap: 12 }}>
+          <Text style={{ color: "#EF4444", fontSize: 16, fontWeight: "bold" }}>{error}</Text>
+          <TouchableOpacity
+            onPress={() => setError("")}
+            style={{ backgroundColor: "#00d4aa", padding: 14, borderRadius: 10, width: "100%", alignItems: "center" }}
+          >
+            <Text style={{ color: "#000", fontWeight: "bold" }}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <TouchableOpacity
+          onPress={() => setShowWebView(true)}
+          style={{
+            backgroundColor: "#00d4aa", padding: 16, borderRadius: 12, alignItems: "center",
+          }}
+        >
+          <Text style={{ color: "#000", fontWeight: "bold", fontSize: 16 }}>
+            Pay {amountTnd} TND
+          </Text>
+        </TouchableOpacity>
+      )}
+    </View>
   );
 }
-
-const styles = StyleSheet.create({
-  content: {
-    paddingHorizontal: 20,
-    paddingBottom: 48,
-    gap: 28,
-    overflow: 'hidden',
-  },
-  screenGlow: {
-    position: 'absolute',
-    top: -85,
-    left: -35,
-    width: 240,
-    height: 240,
-    borderRadius: 999,
-    backgroundColor: appColors.accentGlowSoft,
-    opacity: 0.32,
-  },
-  backButton: {
-    alignSelf: 'flex-start',
-    marginBottom: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: appColors.borderStrong,
-    backgroundColor: appColors.surfaceStrong,
-  },
-  paymentCard: {
-    borderRadius: 18,
-    borderWidth: 1.5,
-    borderColor: appColors.borderStrong,
-    backgroundColor: appColors.surface,
-    padding: 20,
-  },
-  lpMaskShell: {
-    position: 'relative',
-    minWidth: 120,
-    maxWidth: '62%',
-    borderRadius: 8,
-    overflow: 'hidden',
-    alignSelf: 'flex-end',
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-  },
-  lpUnderlayText: {
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    textAlign: 'right',
-    letterSpacing: 2,
-  },
-  lpBlur: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: 8,
-  },
-  primaryButton: {
-    borderRadius: 12,
-    backgroundColor: appColors.accent,
-    paddingVertical: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: appColors.borderStrong,
-  },
-  disabledControl: {
-    opacity: 0.45,
-  },
-  buttonPressed: {
-    opacity: 0.92,
-    transform: [{ scale: 0.99 }],
-  },
-  // WebView styles
-  webViewContainer: {
-    flex: 1,
-    backgroundColor: appColors.bg,
-  },
-  webViewHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingBottom: 10,
-    backgroundColor: appColors.surfaceStrong,
-    borderBottomWidth: 1,
-    borderBottomColor: appColors.borderStrong,
-  },
-  webViewClose: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-  },
-  webViewLoader: {
-    position: 'absolute',
-    top: '40%',
-    left: 0,
-    right: 0,
-  },
-  webView: {
-    flex: 1,
-  },
-});
