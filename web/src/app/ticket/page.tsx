@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import dayjs from "dayjs";
 import {
@@ -16,8 +16,10 @@ import {
   Loader2,
   Ticket,
 } from "lucide-react";
-import { useBookingStore } from "@/store";
+import { useBookingStore, type TicketRecord } from "@/store";
 import { cn } from "@/lib/utils";
+import { QRCodeSVG } from "qrcode.react";
+import api from "@/lib/api";
 
 export default function TicketPage() {
   return (
@@ -33,9 +35,104 @@ function TicketScreen() {
   const tid = searchParams.get("ticketId") || "";
   const bid = searchParams.get("bookingId") || "";
 
-  const ticket = useBookingStore((s) =>
+  const storedTicket = useBookingStore((s) =>
     s.tickets.find((t: any) => t.id === tid || t.id === bid),
   );
+  const addTicket = useBookingStore((s) => s.addTicket);
+
+  const [ticket, setTicket] = useState<TicketRecord | null>(storedTicket ?? null);
+  const [fetching, setFetching] = useState(!storedTicket);
+
+  // Ticket lookup priority:
+  // 1. In-memory store (Zustand + localStorage persistence)
+  // 2. Public API by ticket UUID
+  // 3. Public API by booking UUID
+  // 4. Authenticated bookings list
+  useEffect(() => {
+    if (storedTicket) {
+      setTicket(storedTicket);
+      setFetching(false);
+      return;
+    }
+    let cancelled = false;
+
+    function buildRecord(t: any): TicketRecord {
+      return {
+        id: t.id,
+        qrValue: t.qr_payload || t.id?.slice?.(0, 8)?.toUpperCase() || "WASLA",
+        issuedAt: t.created_at || new Date().toISOString(),
+        paymentStatus: "confirmed",
+        state: "active",
+        stationId: t.station_id || "",
+        stationName: t.station_id || "",
+        routeId: t.destination_id || "",
+        routeName: t.destination_name || t.destination_id || "",
+        departureName: t.station_id || "",
+        destinationName: t.destination_name || t.destination_id || "",
+        availableSeats: 0,
+        seatCount: t.seats_booked || 1,
+        pricePerSeat: 0,
+        totalPrice: 0,
+        etdIso: t.etd_timestamp || new Date().toISOString(),
+        etdLabel: t.etd_timestamp ? dayjs(t.etd_timestamp).format("HH:mm") : "--:--",
+        vehiclePlate: t.vehicle_plate || "TBA",
+      };
+    }
+
+    async function load() {
+      // Try public endpoint by ticket UUID
+      if (tid) {
+        try {
+          const pub = await api.get(`/tickets/public/${encodeURIComponent(tid)}`);
+          if (pub.data && !cancelled) {
+            const rec = buildRecord(pub.data);
+            addTicket(rec);
+            setTicket(rec);
+            setFetching(false);
+            return;
+          }
+        } catch { /* continue */ }
+      }
+      // Try public endpoint by booking UUID
+      const lookupByBooking = bid || tid;
+      if (lookupByBooking) {
+        try {
+          const pub = await api.get(`/tickets/public/by-booking/${encodeURIComponent(lookupByBooking)}`);
+          if (pub.data && !cancelled) {
+            const rec = buildRecord(pub.data);
+            addTicket(rec);
+            setTicket(rec);
+            setFetching(false);
+            return;
+          }
+        } catch { /* continue */ }
+      }
+      // Fallback: authenticated bookings list
+      try {
+        const res = await api.get("/bookings/mine");
+        const bookings = Array.isArray(res.data) ? res.data : [];
+        const match = bookings.find(
+          (b: any) => b.id === tid || b.id === bid || b.booking_id === tid || b.booking_id === bid,
+        );
+        if (match && !cancelled) {
+          const rec = buildRecord({
+            id: match.id,
+            station_id: match.station_id,
+            destination_id: match.destination_id,
+            destination_name: match.destination_id,
+            seats_booked: match.seats_booked || 1,
+            vehicle_plate: match.vehicle_plate || "TBA",
+            created_at: match.created_at,
+          });
+          addTicket(rec);
+          setTicket(rec);
+        }
+      } catch { /* not authenticated or server unreachable */ }
+      if (!cancelled) setFetching(false);
+    }
+    load();
+    return () => { cancelled = true; };
+  }, [tid, bid, storedTicket, addTicket]);
 
   const goBack = useCallback(() => {
     if (window.history.length > 1) {
@@ -70,6 +167,16 @@ function TicketScreen() {
     }
   }, [ticket]);
 
+  // Loading state — fetching from server
+  if (fetching) {
+    return (
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-wasla-bg">
+        <Loader2 size={32} className="animate-spin text-wasla-primary" />
+        <p className="text-sm text-wasla-text-muted">Loading ticket...</p>
+      </div>
+    );
+  }
+
   // Not found state
   if (!ticket) {
     return (
@@ -88,8 +195,7 @@ function TicketScreen() {
             Ticket not found
           </h2>
           <p className="max-w-xs text-center text-xs leading-relaxed text-wasla-text-muted">
-            The ticket may have been cleared. Create a new booking to generate
-            another one.
+            Sign in to view your tickets, or create a new booking.
           </p>
           <button
             type="button"
@@ -196,12 +302,10 @@ function TicketScreen() {
           <div className="flex flex-col items-center gap-3 py-2">
             <div className="rounded-2xl border border-[rgba(212,168,83,0.15)] bg-[rgba(212,168,83,0.1)] p-3">
               <div className="overflow-hidden rounded-xl bg-[#F0F4FF] p-2.5">
-                <img
-                  src={`https://chart.googleapis.com/chart?chs=160x160&cht=qr&chl=${encodeURIComponent(qrValue)}`}
-                  alt="Ticket QR Code"
-                  width={160}
-                  height={160}
-                  className="block"
+                <QRCodeSVG
+                  value={qrValue}
+                  size={160}
+                  level="M"
                 />
               </div>
             </div>

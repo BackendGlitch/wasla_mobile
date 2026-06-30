@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+
 import { useQuery } from "@tanstack/react-query";
 import dayjs from "dayjs";
 import {
@@ -446,8 +447,8 @@ export default function HomeScreen() {
               destinationName: dest,
               availableSeats: 0,
               seatCount: b.seats_booked || 1,
-              pricePerSeat: b.price_per_seat || 25,
-              totalPrice: b.amount || b.seats_booked * 25,
+              pricePerSeat: b.price_per_seat || 5.0,
+              totalPrice: b.amount || b.seats_booked * 5.0,
               etdIso: b.created_at,
               etdLabel: new Date(b.created_at).toLocaleTimeString([], {
                 hour: "2-digit",

@@ -50,7 +50,7 @@ pnpm run start -- --clear
 The app initializes a persistent Socket.IO connection to the central backend once the app bootstraps.
 
 Environment:
-- `EXPO_PUBLIC_CENTRAL_SERVER_URL` (default: `http://10.0.2.2:4000` for Android emulator)
+- `EXPO_PUBLIC_CENTRAL_SERVER_URL` (required; set it to your backend URL)
 
 Connection details:
 - Socket.IO namespace: `/realtime`
@@ -63,7 +63,8 @@ To verify locally:
 3. Confirm the app connects and receives `ready`, then `pong` (the app sends `ping` automatically after `ready`).
 
 Note for interns:
-- Android emulator: use `http://10.0.2.2:4000` (or override `EXPO_PUBLIC_CENTRAL_SERVER_URL`).
+- Android emulator: use `http://10.0.2.2:4000` when the backend runs on your machine.
+- iOS simulator: use `http://localhost:4000` when the backend runs on your machine.
 - Physical device: replace with the dev machine LAN IP (or use an Expo tunnel), because `localhost` points to the phone itself.
 
 Connection state is available via `useRealtimeStore` (`status`, `lastReadyAt`, `lastPongAt`, `lastPong`, `lastError`).

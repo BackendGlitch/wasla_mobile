@@ -44,7 +44,8 @@ export function buildBookingRouteMeta(route: RouteData, stationName: string): Bo
     typeof route.base_price === 'number' && Number.isFinite(route.base_price) && route.base_price > 0
       ? route.base_price
       : null;
-  const pricePerSeat = fromApi ?? 15 + (hash % 6) * 5;
+  // Use real price from station API. Fall back to 0 if unavailable (UI should handle gracefully).
+  const pricePerSeat = fromApi ?? 0;
   const etdIso = dayjs().add(10 + (hash % 8) * 5, 'minute').second(0).millisecond(0).toISOString();
 
   return {

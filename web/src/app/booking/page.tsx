@@ -97,7 +97,7 @@ function BookingScreen() {
       totalPrice,
       etdIso,
       etdLabel,
-      vehiclePlate: "Pending",
+      vehiclePlate: "TBA",
     });
   }, [
     availableSeatsLive,
@@ -159,6 +159,11 @@ function BookingScreen() {
             ? res.paymentUrl
             : "";
 
+      // Extract vehicle plate from the station response (assigned at hold creation)
+      const vehiclePlate =
+        (typeof res?.vehicle_license_plate === "string" && res.vehicle_license_plate.trim()) ||
+        "TBA";
+
       // Store payment URL in draft so payment page reads it from memory,
       // not from the URL (avoiding sensitive data in browser history/address bar).
       useBookingStore.getState().setDraft({
@@ -166,7 +171,7 @@ function BookingScreen() {
         departureName, destinationName,
         availableSeats: availableSeatsLive, seatCount,
         pricePerSeat, totalPrice,
-        etdIso, etdLabel, vehiclePlate: "Pending",
+        etdIso, etdLabel, vehiclePlate,
         paymentUrl,
       });
 

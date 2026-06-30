@@ -4,7 +4,7 @@ import { Suspense, useCallback, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, CheckCircle, AlertCircle, ArrowLeft, ExternalLink } from "lucide-react";
 import api from "@/lib/api";
-import { useBookingStore } from "@/store";
+import { useBookingStore } from "@/store/bookingStore";
 import { cn } from "@/lib/utils";
 
 export default function PaymentPage() {
@@ -19,6 +19,7 @@ function PaymentScreen() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const draft = useBookingStore((s) => s.draft);
+  const addTicket = useBookingStore((s) => s.addTicket);
 
   // Only the booking ID comes from the URL.
   // All sensitive booking details (including paymentUrl) come from the Zustand draft store.
@@ -38,6 +39,8 @@ function PaymentScreen() {
   // Allowlisted payment gateway origins
   const ALLOWED_PAYMENT_ORIGINS = [
     "https://checkout.nexapay.com",
+    "https://nexapay.space",
+    "https://checkout.nexapay.space",
     "https://api.nexapay.com",
     "https://nexapay.com",
     "https://backend.wasla.fun",
@@ -65,6 +68,19 @@ function PaymentScreen() {
       try {
         const res = await api.post(`/bookings/${bId}/confirm-payment`);
         if (res.data?.ticket || res.data?.already_confirmed) {
+          // Save ticket to store - use server vehicle plate if available
+          if (draft) {
+            const serverPlate = (res.data?.ticket?.vehicle_plate || res.data?.vehicle_plate || "").trim();
+            addTicket({
+              id: bId,
+              qrValue: bId.slice(0, 8).toUpperCase(),
+              issuedAt: new Date().toISOString(),
+              paymentStatus: "confirmed",
+              state: "active",
+              ...draft,
+              vehiclePlate: serverPlate || draft.vehiclePlate || "TBA",
+            });
+          }
           setConfirmed(true);
           setConfirming(false);
           return true;

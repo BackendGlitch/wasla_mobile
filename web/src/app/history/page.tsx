@@ -1,35 +1,116 @@
 "use client";
+// v2 — server-driven history, always fetches from backend
 
-import { useMemo } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import dayjs from "dayjs";
-import { Ticket, Clock, TimerOff, CheckCircle, X, ArrowRight, ChevronRight } from "lucide-react";
-import { useBookingStore } from "@/store";
+import { Ticket, Loader2, WifiOff, ChevronRight, Clock, TimerOff, CheckCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import api from "@/lib/api";
+
+type ServerBooking = {
+  id: string;
+  station_id: string;
+  destination_id: string;
+  seats_booked: number;
+  vehicle_plate: string | null;
+  status: string;
+  payment_status: string;
+  amount: number;
+  price_per_seat: number;
+  created_at: string | null;
+};
+
+type HistoryTicket = {
+  id: string;
+  stationId: string;
+  stationName: string;
+  destinationName: string;
+  seatCount: number;
+  vehiclePlate: string;
+  totalPrice: number;
+  pricePerSeat: number;
+  createdAt: string;
+  etdLabel: string;
+  isActive: boolean;
+  isExpired: boolean;
+};
+
+function normalizeBooking(b: ServerBooking): HistoryTicket {
+  const dest = (b.destination_id || "").replace("dest_", "").replace(/_/g, " ");
+  const stn = (b.station_id || "").replace(/_/g, " ");
+  const age = Date.now() - new Date(b.created_at || Date.now()).getTime();
+  const isActive = b.status === "CONFIRMED" && age < 3_600_000;
+  const isExpired = b.status === "EXPIRED" || (b.status === "CONFIRMED" && age >= 3_600_000);
+
+  return {
+    id: b.id,
+    stationId: b.station_id,
+    stationName: stn,
+    destinationName: dest,
+    seatCount: b.seats_booked || 1,
+    vehiclePlate: b.vehicle_plate || "TBA",
+    totalPrice: b.amount || b.seats_booked * (b.price_per_seat || 0),
+    pricePerSeat: b.price_per_seat || 0,
+    createdAt: b.created_at || new Date().toISOString(),
+    etdLabel: new Date(b.created_at || Date.now()).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    }),
+    isActive,
+    isExpired,
+  };
+}
 
 export default function HistoryScreen() {
   const router = useRouter();
-  const tickets = useBookingStore((s) => s.tickets);
+  const [tickets, setTickets] = useState<HistoryTicket[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [needsAuth, setNeedsAuth] = useState(false);
 
-  // Stats
-  const stats = useMemo(() => {
-    const total = tickets.reduce(
-      (sum, t: any) => sum + (t.totalPrice || 0),
-      0,
-    );
-    return { trips: tickets.length, spent: total };
-  }, [tickets]);
+  const fetchTickets = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    setNeedsAuth(false);
+    try {
+      const res = await api.get("/bookings/mine");
+      const bookings: ServerBooking[] = Array.isArray(res.data) ? res.data : [];
+      const normalized = bookings
+        .filter((b) => b.status === "CONFIRMED" || b.status === "EXPIRED" || b.status === "CANCELLED")
+        .map(normalizeBooking)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      setTickets(normalized);
+    } catch (err: any) {
+      if (err?.response?.status === 401) {
+        setNeedsAuth(true);
+      } else {
+        setError("Could not load trips. Pull down to retry.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchTickets();
+  }, [fetchTickets]);
+
+  const stats = {
+    trips: tickets.length,
+    spent: tickets.reduce((sum, t) => sum + t.totalPrice, 0),
+  };
 
   // Group by date
-  const grouped = useMemo(() => {
-    const map: Record<string, any[]> = {};
+  const grouped: [string, HistoryTicket[]][] = (() => {
+    const map: Record<string, HistoryTicket[]> = {};
     for (const t of tickets) {
-      const day = dayjs(t.issuedAt).format("ddd, D MMM");
+      const day = dayjs(t.createdAt).format("ddd, D MMM");
       if (!map[day]) map[day] = [];
       map[day].push(t);
     }
     return Object.entries(map);
-  }, [tickets]);
+  })();
 
   return (
     <div className="flex min-h-dvh flex-col bg-wasla-bg">
@@ -41,15 +122,61 @@ export default function HistoryScreen() {
           </h1>
           <button
             type="button"
-            onClick={() => router.back()}
-            className="rounded-lg p-1.5 text-wasla-text-muted transition-colors hover:text-wasla-text-secondary"
+            onClick={fetchTickets}
+            disabled={loading}
+            className="rounded-lg px-3 py-1.5 text-xs font-semibold text-wasla-primary transition-opacity hover:opacity-80 disabled:opacity-40"
           >
-            <X size={20} />
+            {loading ? "Loading..." : "Refresh"}
           </button>
         </div>
 
-        {tickets.length === 0 ? (
-          /* Empty state */
+        {/* Loading */}
+        {loading && tickets.length === 0 && (
+          <div className="flex flex-col items-center gap-4 py-20">
+            <Loader2 size={32} className="animate-spin text-wasla-primary" />
+            <p className="text-xs text-wasla-text-muted">Loading trips...</p>
+          </div>
+        )}
+
+        {/* Needs auth */}
+        {!loading && needsAuth && (
+          <div className="flex flex-col items-center gap-3 py-16">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#0D1525]">
+              <Ticket size={28} className="text-[#3A4A60]" />
+            </div>
+            <h2 className="text-base font-bold text-wasla-text-primary">
+              Sign in to see your trips
+            </h2>
+            <p className="text-center text-xs text-wasla-text-muted">
+              Your booking history is tied to your account.
+            </p>
+            <button
+              type="button"
+              onClick={() => router.push("/sign-in")}
+              className="mt-2 rounded-xl bg-wasla-primary px-5 py-2.5 text-xs font-bold text-[#0A0F19] transition-opacity hover:opacity-90"
+            >
+              Sign in
+            </button>
+          </div>
+        )}
+
+        {/* Error */}
+        {!loading && !needsAuth && error && tickets.length === 0 && (
+          <div className="flex flex-col items-center gap-3 py-16">
+            <WifiOff size={28} className="text-[#3A4A60]" />
+            <p className="text-xs text-wasla-text-muted">{error}</p>
+            <button
+              type="button"
+              onClick={fetchTickets}
+              className="mt-2 rounded-xl bg-wasla-primary px-5 py-2.5 text-xs font-bold text-[#0A0F19]"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        {/* Empty */}
+        {!loading && !needsAuth && !error && tickets.length === 0 && (
           <div className="flex flex-col items-center gap-3 py-16">
             <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#0D1525]">
               <Ticket size={28} className="text-[#3A4A60]" />
@@ -58,7 +185,7 @@ export default function HistoryScreen() {
               No trips yet
             </h2>
             <p className="text-center text-xs text-wasla-text-muted">
-              Your completed bookings will appear here
+              Your completed bookings will appear here.
             </p>
             <button
               type="button"
@@ -68,7 +195,10 @@ export default function HistoryScreen() {
               Book a trip
             </button>
           </div>
-        ) : (
+        )}
+
+        {/* Ticket list */}
+        {tickets.length > 0 && (
           <>
             {/* Stats bar */}
             <div className="mb-5 flex gap-2">
@@ -82,7 +212,7 @@ export default function HistoryScreen() {
               </div>
               <div className="flex-1 rounded-xl border border-[rgba(255,255,255,0.04)] bg-[#0D1525] p-3">
                 <p className="text-xl font-bold text-wasla-primary">
-                  {stats.spent}
+                  {stats.spent.toFixed(3)}
                 </p>
                 <p className="text-[10px] font-semibold text-wasla-text-muted">
                   TND SPENT
@@ -90,34 +220,31 @@ export default function HistoryScreen() {
               </div>
             </div>
 
-            {/* Ticket list */}
+            {/* Grouped ticket list */}
             {grouped.map(([date, items]) => (
               <div key={date} className="mb-4">
                 <p className="mb-2 text-[10px] font-semibold tracking-wider text-wasla-text-muted">
                   {date.toUpperCase()}
                 </p>
-                {items.map((t: any) => {
-                  const state: string = (t as any).state || "used";
-                  const isActive = state === "active";
-                  const isExpired = state === "expired";
-                  const accentColor = isActive
+                {items.map((t) => {
+                  const accentColor = t.isActive
                     ? "text-wasla-success"
-                    : isExpired
+                    : t.isExpired
                       ? "text-wasla-error"
                       : "text-wasla-text-muted";
-                  const bgColor = isActive
+                  const bgColor = t.isActive
                     ? "bg-[rgba(34,197,94,0.04)]"
-                    : isExpired
+                    : t.isExpired
                       ? "bg-[rgba(239,68,68,0.04)]"
                       : "bg-transparent";
-                  const Icon = isActive
+                  const Icon = t.isActive
                     ? Clock
-                    : isExpired
+                    : t.isExpired
                       ? TimerOff
                       : CheckCircle;
-                  const stateLabel = isActive
+                  const stateLabel = t.isActive
                     ? "Active"
-                    : isExpired
+                    : t.isExpired
                       ? "Expired"
                       : "Used";
 
@@ -145,14 +272,14 @@ export default function HistoryScreen() {
                           <span
                             className={cn(
                               "text-xs font-bold",
-                              isActive
+                              t.isActive
                                 ? "text-wasla-success"
-                                : isExpired
+                                : t.isExpired
                                   ? "text-wasla-error"
                                   : "text-wasla-text-muted",
                             )}
                           >
-                            {t.totalPrice} TND
+                            {t.totalPrice.toFixed(3)} TND
                           </span>
                         </div>
                         <div className="flex gap-3">
@@ -188,4 +315,3 @@ export default function HistoryScreen() {
     </div>
   );
 }
-

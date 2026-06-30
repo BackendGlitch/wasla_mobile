@@ -96,7 +96,7 @@ export default function BookingScreen() {
       totalPrice,
       etdIso,
       etdLabel,
-      vehiclePlate: 'Pending',
+      vehiclePlate: 'TBA',
     });
   }, [
     availableSeatsLive,
@@ -158,11 +158,17 @@ export default function BookingScreen() {
             ? res.paymentUrl
             : '';
 
+      // Extract vehicle plate from station response (assigned at hold creation)
+      const vehiclePlate =
+        (typeof res?.vehicle_license_plate === 'string' && res.vehicle_license_plate.trim()) ||
+        'TBA';
+
       router.push({
         pathname: '/(app)/payment',
         params: {
           centralBookingId,
           paymentUrl,
+          vehiclePlate,
           amount: String(amountInMillimes),
           description: `${departureName} → ${destinationName}`,
           stationId,

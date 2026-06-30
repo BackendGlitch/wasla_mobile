@@ -3,6 +3,8 @@ import { View, Text, TouchableOpacity, Alert, ActivityIndicator } from "react-na
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { WebView } from "react-native-webview";
 import api from "../../src/lib/api";
+import { useBookingStore, type TicketRecord } from "../../src/store";
+import dayjs from "dayjs";
 
 export default function PaymentScreen() {
   const router = useRouter();
@@ -11,6 +13,19 @@ export default function PaymentScreen() {
     centralBookingId?: string;
     amount?: string;
     description?: string;
+    vehiclePlate?: string;
+    stationId?: string;
+    stationName?: string;
+    routeId?: string;
+    routeName?: string;
+    departureName?: string;
+    destinationName?: string;
+    availableSeats?: string;
+    seatCount?: string;
+    pricePerSeat?: string;
+    totalPrice?: string;
+    etdIso?: string;
+    etdLabel?: string;
   }>();
 
   const paymentUrl = params.paymentUrl ?? "";
@@ -23,20 +38,53 @@ export default function PaymentScreen() {
   const [paymentDone, setPaymentDone] = useState(false);
   const amountTnd = (amount / 1000).toFixed(3);
 
+  const addTicket = useBookingStore((s) => s.addTicket);
+
   const confirmTicket = useCallback(async (bId: string): Promise<boolean> => {
     try {
       const res = await api.post(`/bookings/${bId}/confirm-payment`);
       if (res.data?.ticket || res.data?.already_confirmed) {
-        Alert.alert("Ticket Ready!", "Booking confirmed.", [
-          { text: "View Ticket", onPress: () => router.replace("/(app)/ticket") },
-        ]);
+        // Build ticket record from server response + draft params
+        const t = res.data?.ticket || {};
+        const ticketRecord: TicketRecord = {
+          id: t.id || bId,
+          qrValue: t.qr_payload || bId.slice(0, 8).toUpperCase(),
+          issuedAt: t.created_at || new Date().toISOString(),
+          paymentStatus: "confirmed",
+          state: "active",
+          stationId: t.station_id || params.stationId || "",
+          stationName: params.stationName || params.departureName || "",
+          routeId: t.destination_id || params.routeId || "",
+          routeName: params.destinationName || params.routeName || "",
+          departureName: params.departureName || params.stationName || "",
+          destinationName: params.destinationName || params.routeName || "",
+          availableSeats: Number(params.availableSeats ?? "0") || 1,
+          seatCount: t.seats_booked || Number(params.seatCount ?? "1") || 1,
+          pricePerSeat: Number(params.pricePerSeat ?? "0") || 0,
+          totalPrice: Number(params.totalPrice ?? "0") || 0,
+          etdIso: t.etd_timestamp || params.etdIso || new Date().toISOString(),
+          etdLabel: t.etd_timestamp
+            ? dayjs(t.etd_timestamp).format("HH:mm")
+            : params.etdLabel || "--:--",
+          vehiclePlate: t.vehicle_plate || params.vehiclePlate || "TBA",
+        };
+
+        // Save ticket to store
+        addTicket(ticketRecord);
+
+        // Navigate to ticket page with booking ID
+        router.replace({
+          pathname: "/(app)/ticket",
+          params: { bookingId: bId },
+        });
+
         return true;
       }
       return false;
     } catch {
       return false;
     }
-  }, [router]);
+  }, [router, addTicket, params]);
 
   const startPolling = useCallback(async () => {
     setShowWebView(false);
@@ -53,7 +101,7 @@ export default function PaymentScreen() {
     ]);
   }, [bookingId, confirmTicket, router]);
 
-  // Detect navigation to the backend return page (real HTTPS URL, loads fine in WebView)
+  // Detect navigation to the backend return page
   const handleNavChange = useCallback((navState: { url?: string }) => {
     const url = navState.url || "";
     if (url.includes("/payments/return")) {
