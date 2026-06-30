@@ -45,10 +45,12 @@ export default function PaymentScreen() {
       const res = await api.post(`/bookings/${bId}/confirm-payment`);
       if (res.data?.ticket || res.data?.already_confirmed) {
         // Build ticket record from server response + draft params
+        // Use booking ID as the ticket id (matches how the ticket page looks up tickets)
         const t = res.data?.ticket || {};
+        const ticketId = bId;
         const ticketRecord: TicketRecord = {
-          id: t.id || bId,
-          qrValue: t.qr_payload || bId.slice(0, 8).toUpperCase(),
+          id: ticketId,
+          qrValue: t.qr_payload || ticketId.slice(0, 8).toUpperCase(),
           issuedAt: t.created_at || new Date().toISOString(),
           paymentStatus: "confirmed",
           state: "active",

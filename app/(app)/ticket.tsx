@@ -3,10 +3,11 @@ import QRCode from 'react-native-qrcode-svg';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Pressable, ScrollView, Share, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, Share, StyleSheet, View, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text, XStack, YStack } from 'tamagui';
 import { useBookingStore } from '../../src/store';
+import api from '../../src/lib/api';
 import { appColors } from '../../src/theme/appTheme';
 
 export default function TicketScreen() {
@@ -15,8 +16,58 @@ export default function TicketScreen() {
   const params = useLocalSearchParams<{ ticketId?: string | string[]; bookingId?: string | string[] }>();
   const tid = typeof params.ticketId === 'string' ? params.ticketId : Array.isArray(params.ticketId) ? params.ticketId[0] : '';
   const bid = typeof params.bookingId === 'string' ? params.bookingId : Array.isArray(params.bookingId) ? params.bookingId[0] : '';
-  const ticket = useBookingStore((s) => s.tickets.find((t) => t.id === tid || t.id === bid));
+  const storedTicket = useBookingStore((s) => s.tickets.find((t) => t.id === tid || t.id === bid));
+  const addTicket = useBookingStore((s) => s.addTicket);
+  const [ticket, setTicket] = useState(storedTicket ?? null);
+  const [loading, setLoading] = useState(!storedTicket);
   const topPad = Math.max(insets.top + 12, 48);
+
+  // If ticket not in store, try server (public endpoint)
+  useEffect(() => {
+    if (storedTicket) {
+      setTicket(storedTicket);
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    const lookupId = bid || tid;
+    if (!lookupId) { setLoading(false); return; }
+    (async () => {
+      try {
+        // Try public by-booking endpoint first
+        const res = await api.get(`/tickets/public/by-booking/${encodeURIComponent(lookupId)}`);
+        const t = res.data;
+        if (t && !cancelled) {
+          const rec = {
+            id: lookupId,
+            qrValue: t.qr_payload || lookupId.slice(0, 8).toUpperCase(),
+            issuedAt: t.created_at || new Date().toISOString(),
+            paymentStatus: 'confirmed' as const,
+            state: 'active' as const,
+            stationId: t.station_id || '',
+            stationName: t.station_id || '',
+            routeId: t.destination_id || '',
+            routeName: t.destination_name || '',
+            departureName: '',
+            destinationName: t.destination_name || '',
+            availableSeats: 0,
+            seatCount: t.seats_booked || 1,
+            pricePerSeat: 0,
+            totalPrice: 0,
+            etdIso: t.etd_timestamp || new Date().toISOString(),
+            etdLabel: t.etd_timestamp ? dayjs(t.etd_timestamp).format('HH:mm') : '--:--',
+            vehiclePlate: t.vehicle_plate || 'TBA',
+          };
+          addTicket(rec);
+          setTicket(rec);
+        }
+      } catch {
+        // Server fetch failed — ticket stays null
+      }
+      if (!cancelled) setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [tid, bid, storedTicket, addTicket]);
 
   const goBack = () => { if (router.canGoBack()) router.back(); else router.replace('/(app)'); };
 
@@ -27,6 +78,15 @@ export default function TicketScreen() {
       title: 'Wasla Ticket',
     });
   };
+
+  if (loading) {
+    return (
+      <YStack flex={1} bg="#060B14" items="center" justify="center" gap={12}>
+        <ActivityIndicator color="#D4A853" size="large" />
+        <Text color="#556580" fontSize={13}>Loading ticket...</Text>
+      </YStack>
+    );
+  }
 
   if (!ticket) {
     return (
